@@ -30,7 +30,7 @@ import {
   type GoogleAdminSession,
 } from "@/lib/admin/googleAuth";
 import { createSongRequestInFirestore, fetchSongsFromFirestore, firebaseAvailable } from "@/lib/firebase/firestore";
-import { fetchAdminProfile, fetchAdminProfileByGoogleId } from "@/lib/firebase/firestore";
+import { fetchAdminProfile } from "@/lib/firebase/firestore";
 import { loginWithGoogle, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth";
 import { describeFirebaseError } from "@/lib/firebase/errors";
 import { filterAndSortSongs } from "@/lib/songs/filter";
@@ -177,8 +177,7 @@ export function SongbookApp() {
           const profile = firebaseUid
             ? await fetchAdminProfile(firebaseUid)
             : null;
-          const googleProfile = profile ? null : await fetchAdminProfileByGoogleId(googleId);
-          setAdminProfile(profile ?? googleProfile ?? localAdminProfile(googleId));
+          setAdminProfile(profile ?? localAdminProfile(googleId));
         } catch {
           setAdminProfile(localAdminProfile(googleId));
         }
@@ -212,9 +211,7 @@ export function SongbookApp() {
         setAdminSession(session);
         saveGoogleAdminSession(session);
 
-        const profile = (await fetchAdminProfile(session.firebaseUid ?? session.googleId))
-          ?? (await fetchAdminProfileByGoogleId(session.googleId))
-          ?? localAdminProfile(session.googleId);
+        const profile = (await fetchAdminProfile(session.firebaseUid ?? session.googleId)) ?? localAdminProfile(session.googleId);
         setAdminProfile(profile);
         showToast(profile ? "Google로 로그인했어요" : "로그인했지만 관리자 권한이 없습니다");
         return;

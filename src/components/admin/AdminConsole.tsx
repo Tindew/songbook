@@ -33,7 +33,6 @@ import { describeFirebaseError } from "@/lib/firebase/errors";
 import {
   deleteSongFromFirestore,
   fetchAdminProfile,
-  fetchAdminProfileByGoogleId,
   fetchAdminProfiles,
   fetchSongRequestsFromFirestore,
   fetchSongsFromFirestore,
@@ -162,8 +161,7 @@ export function AdminConsole() {
         setAdminLoading(true);
         try {
           const profile = configured && firebaseUid ? await fetchAdminProfile(firebaseUid) : null;
-          const googleProfile = configured && !profile ? await fetchAdminProfileByGoogleId(googleId) : null;
-          const resolvedProfile = profile ?? googleProfile ?? localAdminProfile(googleId);
+          const resolvedProfile = profile ?? localAdminProfile(googleId);
           setAdmin(resolvedProfile);
           if (resolvedProfile) await refreshData();
         } catch {
