@@ -415,9 +415,16 @@ export function AdminConsole() {
         <div className="mx-auto mt-10 max-w-xl rounded-[24px] border border-white/70 bg-white/80 p-6 text-center shadow-card">
           <ShieldCheck className="mx-auto h-10 w-10 text-warning" />
           <h2 className="mt-4 text-2xl font-extrabold text-ink">관리자 권한이 없습니다.</h2>
-          <p className="mt-2 text-sm font-medium leading-6 text-muted">
-            Firestore의 <code className="rounded bg-[#F4ECE0] px-1">admins/{session.naverId}</code> 문서를 추가해주세요.
-          </p>
+          <div className="mt-4 rounded-2xl bg-[#F8F2E8] p-4 text-left text-sm font-semibold leading-6 text-muted">
+            <p>첫 관리자는 Firestore에 직접 추가해야 합니다.</p>
+            <p className="mt-2">
+              권장 문서 ID:{" "}
+              <code className="rounded bg-white px-1 text-ink">{session.firebaseUid || session.naverId}</code>
+            </p>
+            <p>
+              네이버 기준 ID: <code className="rounded bg-white px-1 text-ink">{session.naverId}</code>
+            </p>
+          </div>
           <button
             type="button"
             onClick={handleLogout}

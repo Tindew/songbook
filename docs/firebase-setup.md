@@ -69,27 +69,51 @@ admins/default-admin
 
 설정 페이지의 관리자 추가 기능은 입력한 값을 `admins/{입력값}` 문서로 저장합니다. 운영에서는 새 관리자가 한 번 네이버로 로그인한 뒤 설정 화면에 표시되는 Firebase UID를 전달받아 추가하는 방식이 가장 안전합니다.
 
-## 3. Firebase Auth
+## 3. 네이버 OIDC Provider 설정 순서
+
+1. 네이버 개발자센터에서 애플리케이션을 생성합니다.
+2. 사용 API에서 네이버 로그인을 선택합니다.
+3. OIDC 사용을 위한 Client ID와 Client Secret을 확인합니다.
+4. Firebase Console에서 Authentication with Identity Platform으로 업그레이드합니다.
+5. Authentication > Sign-in method > Add new provider > OpenID Connect를 선택합니다.
+6. Code Flow를 선택합니다.
+7. Provider ID는 `oidc.naver`로 입력합니다.
+8. Issuer는 `https://nid.naver.com`으로 입력합니다.
+9. Client ID와 Client Secret은 네이버 개발자센터 값을 입력합니다.
+10. Firebase가 안내하는 callback URL을 네이버 개발자센터 Callback URL에 추가합니다.
+
+Firebase callback URL은 보통 아래 형식입니다.
+
+```text
+https://프로젝트ID.firebaseapp.com/__/auth/handler
+```
+
+Vercel 배포 도메인도 Firebase Authorized domains에 추가해야 합니다.
+
+## 4. Firebase Auth
 
 현재 네이버 MVP 로그인에는 Firebase Auth 이메일 로그인이 필요하지 않습니다. 다만 운영 보안을 강화하려면 실제 네이버 OAuth 콜백을 서버에서 검증한 뒤 Firebase Custom Token 또는 서버 API를 통해 관리자 권한을 부여하는 방식으로 확장해야 합니다.
 
-## 4. 관리자 문서
+## 5. 관리자 문서
 
-Firestore에 네이버 기준 아이디로 관리자 문서를 직접 추가합니다.
+Firestore에 첫 관리자 문서를 직접 추가합니다. 실제 OIDC 로그인에서는 Firebase UID를 문서 ID로 쓰는 것을 권장합니다.
 
 ```text
-admins/{naverId}
+admins/{firebaseUid}
 ```
 
 ```json
 {
   "email": "admin@example.com",
   "role": "owner",
-  "createdAt": "2026-07-02T00:00:00.000Z"
+  "provider": "naver",
+  "naverId": "네이버에서 받은 기준 ID",
+  "displayName": "기본 관리자",
+  "createdAt": "2026-07-03T00:00:00.000Z"
 }
 ```
 
-## 5. Firestore 컬렉션
+## 6. Firestore 컬렉션
 
 앱에서 사용하는 컬렉션은 다음과 같습니다.
 
@@ -98,7 +122,7 @@ admins/{naverId}
 - `admins`
 - `siteSettings`
 
-## 6. 보안 규칙
+## 7. 보안 규칙
 
 `firestore.rules` 내용을 Firebase Console 또는 Firebase CLI로 배포합니다.
 
