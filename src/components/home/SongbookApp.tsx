@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import { defaultTags, seedSongs } from "@/data/seedSongs";
+import { createSongRequestInFirestore, fetchSongsFromFirestore, firebaseAvailable } from "@/lib/firebase/firestore";
 import { filterAndSortSongs } from "@/lib/songs/filter";
 import { loadLikedIds, loadRequests, loadSongs, saveLikedIds, saveRequests, saveSongs } from "@/lib/songs/storage";
 import { extractYoutubeVideoId, youtubeThumbnailUrl } from "@/lib/songs/youtube";
@@ -75,22 +76,43 @@ export function SongbookApp() {
   const [selectedThumb, setSelectedThumb] = useState<YoutubeCandidate | null>(null);
   const [toast, setToast] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [firebaseMode, setFirebaseMode] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setSongs(loadSongs());
-      setLikedIds(loadLikedIds());
-      setRequests(loadRequests());
-      setHydrated(true);
+      async function hydrate() {
+        setLikedIds(loadLikedIds());
+        setRequests(loadRequests());
+
+        if (firebaseAvailable()) {
+          try {
+            const firestoreSongs = await fetchSongsFromFirestore();
+            if (firestoreSongs) {
+              setSongs(firestoreSongs);
+              setFirebaseMode(true);
+            }
+          } catch {
+            setSongs(loadSongs());
+            setFirebaseMode(false);
+            setToast("Firestore를 읽지 못해 로컬 데이터로 표시합니다");
+          }
+        } else {
+          setSongs(loadSongs());
+        }
+
+        setHydrated(true);
+      }
+
+      void hydrate();
     }, 0);
 
     return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || firebaseMode) return;
     saveSongs(songs);
-  }, [hydrated, songs]);
+  }, [firebaseMode, hydrated, songs]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -223,7 +245,7 @@ export function SongbookApp() {
     }, 850);
   }
 
-  function submitRequest(event: FormEvent) {
+  async function submitRequest(event: FormEvent) {
     event.preventDefault();
 
     const title = form.title.trim();
@@ -284,7 +306,17 @@ export function SongbookApp() {
     const nextRequests = [request, ...requests];
     setRequests(nextRequests);
     saveRequests(nextRequests);
-    setSongs((prev) => [newSong, ...prev]);
+
+    if (firebaseMode) {
+      try {
+        await createSongRequestInFirestore(request);
+      } catch {
+        showToast("Firestore 저장에 실패해 로컬 요청으로만 저장했어요");
+      }
+    } else {
+      setSongs((prev) => [newSong, ...prev]);
+    }
+
     setForm(emptyForm);
     setThumbState("idle");
     setThumbCandidates([]);
@@ -292,7 +324,7 @@ export function SongbookApp() {
     setRequestOpen(false);
     setSort("recent");
     setActiveTag("전체");
-    showToast("노래 추가 요청이 저장됐어요");
+    showToast(firebaseMode ? "노래 추가 요청이 접수됐어요" : "노래 추가 요청이 저장됐어요");
     scrollToSongbook();
   }
 

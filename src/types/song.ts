@@ -42,6 +42,23 @@ export type SongRequest = {
   approvedSongId?: string;
 };
 
+export type SiteSettings = {
+  siteTitle: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  requestEnabled: boolean;
+  copyCommandEnabled: boolean;
+  announcement?: string;
+  updatedAt: string;
+};
+
+export type AdminProfile = {
+  uid: string;
+  email: string;
+  role: "owner" | "admin";
+  createdAt: string;
+};
+
 export type SortOption = "recent" | "title" | "artist" | "likes" | "difficulty" | "random";
 
 export type ViewMode = "card" | "compact";
