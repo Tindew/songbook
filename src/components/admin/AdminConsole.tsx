@@ -20,15 +20,19 @@ import {
   loadNaverAdminSession,
   localAdminProfile,
   loginWithDefaultNaverAdmin,
+  naverSessionFromFirebaseUser,
   logoutNaverAdmin,
   saveLocalAdminId,
+  saveNaverAdminSession,
   defaultNaverAdminId,
   type NaverAdminSession,
 } from "@/lib/admin/naverAuth";
+import { loginWithNaverOidc, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth";
 import { hasFirebaseConfig } from "@/lib/firebase/client";
 import {
   deleteSongFromFirestore,
   fetchAdminProfile,
+  fetchAdminProfileByNaverId,
   fetchAdminProfiles,
   fetchSongRequestsFromFirestore,
   fetchSongsFromFirestore,
@@ -124,13 +128,25 @@ export function AdminConsole() {
   }, [configured]);
 
   useEffect(() => {
+    if (configured) {
+      return subscribeAuth((user) => {
+        if (user) {
+          const nextSession = naverSessionFromFirebaseUser(user);
+          saveNaverAdminSession(nextSession);
+          setSession(nextSession);
+        } else {
+          setSession(loadNaverAdminSession());
+        }
+        setAuthLoading(false);
+      });
+    }
+
     const timer = window.setTimeout(() => {
       setSession(loadNaverAdminSession());
       setAuthLoading(false);
     }, 0);
-
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [configured]);
 
   useEffect(() => {
     if (!session) {
@@ -139,13 +155,16 @@ export function AdminConsole() {
     }
 
     const naverId = session.naverId;
+    const firebaseUid = session.firebaseUid;
     const timer = window.setTimeout(() => {
       async function loadAdmin() {
         setAdminLoading(true);
         try {
-          const profile = configured ? await fetchAdminProfile(naverId) : null;
-          setAdmin(profile ?? localAdminProfile(naverId));
-          if (profile) await refreshData();
+          const profile = configured && firebaseUid ? await fetchAdminProfile(firebaseUid) : null;
+          const naverProfile = configured && !profile ? await fetchAdminProfileByNaverId(naverId) : null;
+          const resolvedProfile = profile ?? naverProfile ?? localAdminProfile(naverId);
+          setAdmin(resolvedProfile);
+          if (resolvedProfile) await refreshData();
         } catch {
           const fallback = localAdminProfile(naverId);
           setAdmin(fallback);
@@ -165,6 +184,20 @@ export function AdminConsole() {
   const pendingRequests = useMemo(() => requests.filter((request) => request.status === "pending"), [requests]);
 
   async function handleNaverLogin() {
+    if (configured) {
+      try {
+        const result = await loginWithNaverOidc();
+        const nextSession = naverSessionFromFirebaseUser(result.user);
+        saveNaverAdminSession(nextSession);
+        setSession(nextSession);
+        setMessage("네이버로 로그인했습니다.");
+        return;
+      } catch {
+        setMessage("네이버 로그인에 실패했습니다. Firebase OIDC 설정을 확인해주세요.");
+        return;
+      }
+    }
+
     const nextSession = loginWithDefaultNaverAdmin();
     setSession(nextSession);
     setMessage("네이버 기본 관리자로 로그인했습니다.");
@@ -172,6 +205,7 @@ export function AdminConsole() {
 
   function handleLogout() {
     logoutNaverAdmin();
+    void logoutAdmin();
     setSession(null);
     setAdmin(null);
     setSongs([]);
@@ -354,7 +388,9 @@ export function AdminConsole() {
             <ShieldCheck className="h-6 w-6" />
           </div>
           <h2 className="mt-5 text-2xl font-extrabold text-ink">관리자 로그인</h2>
-          <p className="mt-2 text-sm font-medium leading-6 text-muted">네이버 로그인 버튼을 누르면 기본 관리자 ID로 로그인합니다.</p>
+          <p className="mt-2 text-sm font-medium leading-6 text-muted">
+            Firebase OIDC 설정이 있으면 실제 네이버 로그인으로, 설정이 없으면 기본 관리자 ID로 로그인합니다.
+          </p>
           {message ? <Message text={message} /> : null}
           <button
             type="button"
@@ -400,6 +436,11 @@ export function AdminConsole() {
         <div>
           <p className="text-sm font-bold text-deep-lavender">{admin.email}</p>
           <h2 className="text-2xl font-extrabold text-ink">노래책 운영 콘솔</h2>
+          {session ? (
+            <p className="mt-1 text-xs font-bold text-muted">
+              Firebase UID: {session.firebaseUid || "로컬 모드"} · 네이버 기준 ID: {session.naverId}
+            </p>
+          ) : null}
           {!configured ? <p className="mt-1 text-xs font-bold text-warning">Firebase 미설정 상태라 로컬 저장으로 동작합니다.</p> : null}
         </div>
         <div className="flex gap-2">
@@ -703,7 +744,7 @@ function AdminManager({
           표시됩니다.
         </p>
         <div className="mt-5 space-y-4">
-          <AdminInput label="네이버 기준 아이디" value={newAdminId} onChange={onIdChange} placeholder="예: naver_12345" />
+          <AdminInput label="Firebase UID 또는 네이버 기준 ID" value={newAdminId} onChange={onIdChange} placeholder="설정 화면에 표시된 UID/ID" />
           <AdminInput label="표시 이름" value={newAdminName} onChange={onNameChange} placeholder="예: 운영자" />
         </div>
         <button

@@ -14,13 +14,16 @@ NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
 NEXT_PUBLIC_FIREBASE_APP_ID=
 NEXT_PUBLIC_DEFAULT_NAVER_ADMIN_ID=default-admin
+NEXT_PUBLIC_NAVER_OIDC_PROVIDER_ID=oidc.naver
 ```
 
 설정 후 dev 서버를 재시작해야 합니다.
 
 ## 2. 네이버 관리자 로그인
 
-현재 구현은 실제 네이버 OAuth 콜백이 아니라, 네이버 로그인 버튼을 누르면 `NEXT_PUBLIC_DEFAULT_NAVER_ADMIN_ID` 값으로 기본 관리자 세션을 만드는 MVP 방식입니다.
+Firebase 설정이 되어 있고 Firebase Authentication with Identity Platform에서 `oidc.naver` 제공자를 설정하면 실제 네이버 OIDC 로그인을 사용합니다.
+
+Firebase 설정이 없거나 로컬에서 빠르게 확인할 때는 네이버 로그인 버튼을 누르면 `NEXT_PUBLIC_DEFAULT_NAVER_ADMIN_ID` 값으로 기본 관리자 세션을 만드는 fallback 방식으로 동작합니다.
 
 기본값은 다음과 같습니다.
 
@@ -28,7 +31,26 @@ NEXT_PUBLIC_DEFAULT_NAVER_ADMIN_ID=default-admin
 default-admin
 ```
 
-Firestore에 기본 관리자를 등록한다면 문서 ID도 같은 값으로 맞춥니다.
+실제 네이버 OIDC를 사용하는 경우 첫 관리자는 로그인 후 설정 화면에 표시되는 Firebase UID를 문서 ID로 등록하는 것을 권장합니다.
+
+```text
+admins/{firebaseUid}
+```
+
+예시:
+
+```json
+{
+  "email": "admin@example.com",
+  "role": "owner",
+  "provider": "naver",
+  "naverId": "네이버에서 받은 기준 ID",
+  "displayName": "기본 관리자",
+  "createdAt": "2026-07-03T00:00:00.000Z"
+}
+```
+
+로컬 fallback 기본 관리자를 Firestore에 등록한다면 문서 ID도 같은 값으로 맞춥니다.
 
 ```text
 admins/default-admin
@@ -45,7 +67,7 @@ admins/default-admin
 }
 ```
 
-설정 페이지의 관리자 추가 기능은 네이버 기준 아이디를 `admins/{naverId}` 문서로 저장합니다. 실제 네이버 OAuth를 붙일 때는 네이버에서 받은 고유 ID와 이 문서 ID를 비교하면 됩니다.
+설정 페이지의 관리자 추가 기능은 입력한 값을 `admins/{입력값}` 문서로 저장합니다. 운영에서는 새 관리자가 한 번 네이버로 로그인한 뒤 설정 화면에 표시되는 Firebase UID를 전달받아 추가하는 방식이 가장 안전합니다.
 
 ## 3. Firebase Auth
 

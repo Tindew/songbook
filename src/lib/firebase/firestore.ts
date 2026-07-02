@@ -8,6 +8,7 @@ import {
   limit,
   orderBy,
   query,
+  where,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -132,6 +133,15 @@ export async function fetchAdminProfile(uid: string) {
   const snapshot = await getDoc(doc(db, "admins", uid));
   if (!snapshot.exists()) return null;
   return { uid, ...snapshot.data() } as AdminProfile;
+}
+
+export async function fetchAdminProfileByNaverId(naverId: string) {
+  const db = getFirebaseDb();
+  if (!db) return null;
+
+  const snapshot = await getDocs(query(collection(db, "admins"), where("naverId", "==", naverId), limit(1)));
+  const first = snapshot.docs[0];
+  return first ? ({ uid: first.id, ...first.data() } as AdminProfile) : null;
 }
 
 export async function saveAdminProfile(profile: AdminProfile) {

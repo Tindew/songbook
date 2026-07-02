@@ -24,11 +24,14 @@ import {
   loadNaverAdminSession,
   localAdminProfile,
   loginWithDefaultNaverAdmin,
+  naverSessionFromFirebaseUser,
   logoutNaverAdmin,
+  saveNaverAdminSession,
   type NaverAdminSession,
 } from "@/lib/admin/naverAuth";
 import { createSongRequestInFirestore, fetchSongsFromFirestore, firebaseAvailable } from "@/lib/firebase/firestore";
-import { fetchAdminProfile } from "@/lib/firebase/firestore";
+import { fetchAdminProfile, fetchAdminProfileByNaverId } from "@/lib/firebase/firestore";
+import { loginWithNaverOidc, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth";
 import { filterAndSortSongs } from "@/lib/songs/filter";
 import { loadLikedIds, loadRequests, loadSongs, saveLikedIds, saveRequests, saveSongs } from "@/lib/songs/storage";
 import { extractYoutubeVideoId, youtubeThumbnailUrl } from "@/lib/songs/youtube";
@@ -130,6 +133,16 @@ export function SongbookApp() {
   }, []);
 
   useEffect(() => {
+    if (!firebaseMode) return;
+
+    return subscribeAuth((user) => {
+      if (!user) return;
+      const session = naverSessionFromFirebaseUser(user);
+      setAdminSession(session);
+    });
+  }, [firebaseMode]);
+
+  useEffect(() => {
     if (!hydrated || firebaseMode) return;
     saveSongs(songs);
   }, [firebaseMode, hydrated, songs]);
@@ -156,11 +169,15 @@ export function SongbookApp() {
     if (!adminSession || !firebaseMode) return;
 
     const naverId = adminSession.naverId;
+    const firebaseUid = adminSession.firebaseUid;
     const timer = window.setTimeout(() => {
       async function verifyAdmin() {
         try {
-          const profile = await fetchAdminProfile(naverId);
-          setAdminProfile(profile ?? localAdminProfile(naverId));
+          const profile = firebaseUid
+            ? await fetchAdminProfile(firebaseUid)
+            : null;
+          const naverProfile = profile ? null : await fetchAdminProfileByNaverId(naverId);
+          setAdminProfile(profile ?? naverProfile ?? localAdminProfile(naverId));
         } catch {
           setAdminProfile(localAdminProfile(naverId));
         }
@@ -187,6 +204,25 @@ export function SongbookApp() {
   }
 
   async function handleNaverLogin() {
+    if (firebaseMode) {
+      try {
+        const result = await loginWithNaverOidc();
+        const session = naverSessionFromFirebaseUser(result.user);
+        setAdminSession(session);
+        saveNaverAdminSession(session);
+
+        const profile = (await fetchAdminProfile(session.firebaseUid ?? session.naverId))
+          ?? (await fetchAdminProfileByNaverId(session.naverId))
+          ?? localAdminProfile(session.naverId);
+        setAdminProfile(profile);
+        showToast(profile ? "네이버로 로그인했어요" : "로그인했지만 관리자 권한이 없습니다");
+        return;
+      } catch {
+        showToast("네이버 로그인에 실패했습니다. Firebase OIDC 설정을 확인해주세요");
+        return;
+      }
+    }
+
     const session = loginWithDefaultNaverAdmin();
     setAdminSession(session);
 
@@ -205,6 +241,7 @@ export function SongbookApp() {
 
   function handleNaverLogout() {
     logoutNaverAdmin();
+    void logoutAdmin();
     setAdminSession(null);
     setAdminProfile(null);
     showToast("로그아웃했어요");

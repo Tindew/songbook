@@ -1,8 +1,12 @@
 import type { AdminProfile } from "@/types/song";
+import type { User } from "firebase/auth";
+import { naverProviderId } from "@/lib/firebase/auth";
 
 export type NaverAdminSession = {
+  firebaseUid?: string;
   naverId: string;
   displayName: string;
+  email?: string;
   loggedInAt: string;
 };
 
@@ -20,6 +24,18 @@ export function loginWithDefaultNaverAdmin(): NaverAdminSession {
 
   saveNaverAdminSession(session);
   return session;
+}
+
+export function naverSessionFromFirebaseUser(user: User): NaverAdminSession {
+  const providerProfile = user.providerData.find((profile) => profile.providerId === naverProviderId);
+
+  return {
+    firebaseUid: user.uid,
+    naverId: providerProfile?.uid || user.uid,
+    displayName: providerProfile?.displayName || user.displayName || "네이버 관리자",
+    email: providerProfile?.email || user.email || undefined,
+    loggedInAt: new Date().toISOString(),
+  };
 }
 
 export function loadNaverAdminSession() {
