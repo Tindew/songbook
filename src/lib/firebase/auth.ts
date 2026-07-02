@@ -37,8 +37,6 @@ export async function loginWithNaverOidc() {
   await setPersistence(auth, browserLocalPersistence);
   const provider = new OAuthProvider(naverProviderId);
   provider.addScope("openid");
-  provider.addScope("profile");
-  provider.addScope("email");
   return signInWithPopup(auth, provider);
 }
 

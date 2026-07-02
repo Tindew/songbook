@@ -32,6 +32,7 @@ import {
 import { createSongRequestInFirestore, fetchSongsFromFirestore, firebaseAvailable } from "@/lib/firebase/firestore";
 import { fetchAdminProfile, fetchAdminProfileByNaverId } from "@/lib/firebase/firestore";
 import { loginWithNaverOidc, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth";
+import { describeFirebaseError } from "@/lib/firebase/errors";
 import { filterAndSortSongs } from "@/lib/songs/filter";
 import { loadLikedIds, loadRequests, loadSongs, saveLikedIds, saveRequests, saveSongs } from "@/lib/songs/storage";
 import { extractYoutubeVideoId, youtubeThumbnailUrl } from "@/lib/songs/youtube";
@@ -217,8 +218,9 @@ export function SongbookApp() {
         setAdminProfile(profile);
         showToast(profile ? "네이버로 로그인했어요" : "로그인했지만 관리자 권한이 없습니다");
         return;
-      } catch {
-        showToast("네이버 로그인에 실패했습니다. Firebase OIDC 설정을 확인해주세요");
+      } catch (error) {
+        console.error("Naver OIDC login failed", error);
+        showToast(`네이버 로그인 실패: ${describeFirebaseError(error)}`);
         return;
       }
     }

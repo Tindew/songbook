@@ -29,6 +29,7 @@ import {
 } from "@/lib/admin/naverAuth";
 import { loginWithNaverOidc, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth";
 import { hasFirebaseConfig } from "@/lib/firebase/client";
+import { describeFirebaseError } from "@/lib/firebase/errors";
 import {
   deleteSongFromFirestore,
   fetchAdminProfile,
@@ -192,8 +193,9 @@ export function AdminConsole() {
         setSession(nextSession);
         setMessage("네이버로 로그인했습니다.");
         return;
-      } catch {
-        setMessage("네이버 로그인에 실패했습니다. Firebase OIDC 설정을 확인해주세요.");
+      } catch (error) {
+        console.error("Naver OIDC login failed", error);
+        setMessage(`네이버 로그인 실패: ${describeFirebaseError(error)}`);
         return;
       }
     }
