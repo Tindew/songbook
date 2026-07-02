@@ -56,6 +56,9 @@ export type AdminProfile = {
   uid: string;
   email: string;
   role: "owner" | "admin";
+  provider?: "firebase" | "naver";
+  naverId?: string;
+  displayName?: string;
   createdAt: string;
 };
 

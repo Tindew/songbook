@@ -7,21 +7,32 @@ import {
   Heart,
   List,
   Loader2,
+  LogOut,
   Music2,
   Plus,
   RotateCcw,
   Search,
+  Settings,
   Shuffle,
   Sparkles,
   X,
 } from "lucide-react";
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { defaultTags, seedSongs } from "@/data/seedSongs";
+import {
+  loadNaverAdminSession,
+  localAdminProfile,
+  loginWithDefaultNaverAdmin,
+  logoutNaverAdmin,
+  type NaverAdminSession,
+} from "@/lib/admin/naverAuth";
 import { createSongRequestInFirestore, fetchSongsFromFirestore, firebaseAvailable } from "@/lib/firebase/firestore";
+import { fetchAdminProfile } from "@/lib/firebase/firestore";
 import { filterAndSortSongs } from "@/lib/songs/filter";
 import { loadLikedIds, loadRequests, loadSongs, saveLikedIds, saveRequests, saveSongs } from "@/lib/songs/storage";
 import { extractYoutubeVideoId, youtubeThumbnailUrl } from "@/lib/songs/youtube";
-import type { Song, SongRequest, SortOption, ViewMode, YoutubeCandidate } from "@/types/song";
+import type { AdminProfile, Song, SongRequest, SortOption, ViewMode, YoutubeCandidate } from "@/types/song";
 
 const gradientPairs = [
   ["#B9A7FF", "#7B61FF"],
@@ -77,12 +88,21 @@ export function SongbookApp() {
   const [toast, setToast] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [firebaseMode, setFirebaseMode] = useState(false);
+  const [adminSession, setAdminSession] = useState<NaverAdminSession | null>(null);
+  const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       async function hydrate() {
         setLikedIds(loadLikedIds());
         setRequests(loadRequests());
+        const session = loadNaverAdminSession();
+        setAdminSession(session);
+
+        if (session) {
+          const localProfile = localAdminProfile(session.naverId);
+          setAdminProfile(localProfile);
+        }
 
         if (firebaseAvailable()) {
           try {
@@ -132,6 +152,26 @@ export function SongbookApp() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    if (!adminSession || !firebaseMode) return;
+
+    const naverId = adminSession.naverId;
+    const timer = window.setTimeout(() => {
+      async function verifyAdmin() {
+        try {
+          const profile = await fetchAdminProfile(naverId);
+          setAdminProfile(profile ?? localAdminProfile(naverId));
+        } catch {
+          setAdminProfile(localAdminProfile(naverId));
+        }
+      }
+
+      void verifyAdmin();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [adminSession, firebaseMode]);
+
   const visibleSongs = useMemo(
     () => filterAndSortSongs({ songs, likedIds, query, activeTag, likedOnly, sort }),
     [songs, likedIds, query, activeTag, likedOnly, sort],
@@ -144,6 +184,30 @@ export function SongbookApp() {
 
   function showToast(message: string) {
     setToast(message);
+  }
+
+  async function handleNaverLogin() {
+    const session = loginWithDefaultNaverAdmin();
+    setAdminSession(session);
+
+    let profile = localAdminProfile(session.naverId);
+    if (firebaseMode) {
+      try {
+        profile = (await fetchAdminProfile(session.naverId)) ?? profile;
+      } catch {
+        profile = localAdminProfile(session.naverId);
+      }
+    }
+
+    setAdminProfile(profile);
+    showToast(profile ? "네이버 기본 관리자로 로그인했어요" : "로그인했지만 관리자 권한이 없습니다");
+  }
+
+  function handleNaverLogout() {
+    logoutNaverAdmin();
+    setAdminSession(null);
+    setAdminProfile(null);
+    showToast("로그아웃했어요");
   }
 
   function resetAll() {
@@ -331,7 +395,13 @@ export function SongbookApp() {
   return (
     <main className="songbook-shell pb-20">
       <div className="container-main">
-        <NavBar onReset={resetAll} onRequest={() => setRequestOpen(true)} />
+        <NavBar
+          adminProfile={adminProfile}
+          onReset={resetAll}
+          onRequest={() => setRequestOpen(true)}
+          onNaverLogin={handleNaverLogin}
+          onLogout={handleNaverLogout}
+        />
 
         <HeroSection
           songs={visibleSongs.length ? visibleSongs : songs}
@@ -516,7 +586,19 @@ export function SongbookApp() {
   );
 }
 
-function NavBar({ onReset, onRequest }: { onReset: () => void; onRequest: () => void }) {
+function NavBar({
+  adminProfile,
+  onReset,
+  onRequest,
+  onNaverLogin,
+  onLogout,
+}: {
+  adminProfile: AdminProfile | null;
+  onReset: () => void;
+  onRequest: () => void;
+  onNaverLogin: () => void;
+  onLogout: () => void;
+}) {
   return (
     <nav className="sticky top-3 z-40 mt-4 flex items-center gap-3 rounded-full border border-white/70 bg-cream/80 px-4 py-3 shadow-card backdrop-blur-xl">
       <button type="button" onClick={onReset} className="focus-ring flex items-center gap-3 rounded-full">
@@ -533,14 +615,45 @@ function NavBar({ onReset, onRequest }: { onReset: () => void; onRequest: () => 
           요청하기
         </button>
       </div>
-      <button
-        type="button"
-        onClick={onRequest}
-        className="focus-ring ml-auto inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-sm font-extrabold text-deep-lavender shadow-card md:ml-0"
-      >
-        <Plus className="h-4 w-4" />
-        요청
-      </button>
+      {adminProfile ? (
+        <div className="ml-auto flex items-center gap-2 md:ml-0">
+          <Link
+            href="/admin"
+            className="focus-ring inline-flex h-10 items-center gap-2 rounded-full bg-deep-lavender px-4 text-sm font-extrabold text-white shadow-card"
+          >
+            <Settings className="h-4 w-4" />
+            설정
+          </Link>
+          <button
+            type="button"
+            onClick={onLogout}
+            aria-label="로그아웃"
+            title="로그아웃"
+            className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white text-muted shadow-card"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="ml-auto flex items-center gap-2 md:ml-0">
+          <button
+            type="button"
+            onClick={onNaverLogin}
+            className="focus-ring inline-flex h-10 items-center gap-2 rounded-full bg-[#03C75A] px-4 text-sm font-extrabold text-white shadow-card"
+          >
+            N
+            로그인
+          </button>
+          <button
+            type="button"
+            onClick={onRequest}
+            className="focus-ring inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-sm font-extrabold text-deep-lavender shadow-card"
+          >
+            <Plus className="h-4 w-4" />
+            요청
+          </button>
+        </div>
+      )}
     </nav>
   );
 }

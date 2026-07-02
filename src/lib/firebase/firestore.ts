@@ -133,3 +133,24 @@ export async function fetchAdminProfile(uid: string) {
   if (!snapshot.exists()) return null;
   return { uid, ...snapshot.data() } as AdminProfile;
 }
+
+export async function saveAdminProfile(profile: AdminProfile) {
+  const db = getFirebaseDb();
+  if (!db) throw new Error("Firebase 설정이 필요합니다.");
+
+  await setDoc(
+    doc(db, "admins", profile.uid),
+    cleanRecord({
+      ...profile,
+      updatedAt: new Date().toISOString(),
+    }),
+  );
+}
+
+export async function fetchAdminProfiles() {
+  const db = getFirebaseDb();
+  if (!db) return null;
+
+  const snapshot = await getDocs(query(collection(db, "admins"), orderBy("createdAt", "desc"), limit(200)));
+  return snapshot.docs.map((item) => ({ uid: item.id, ...item.data() }) as AdminProfile);
+}
