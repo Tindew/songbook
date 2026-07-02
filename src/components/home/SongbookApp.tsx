@@ -21,17 +21,17 @@ import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { defaultTags, seedSongs } from "@/data/seedSongs";
 import {
-  loadNaverAdminSession,
+  loadGoogleAdminSession,
   localAdminProfile,
-  loginWithDefaultNaverAdmin,
-  naverSessionFromFirebaseUser,
-  logoutNaverAdmin,
-  saveNaverAdminSession,
-  type NaverAdminSession,
-} from "@/lib/admin/naverAuth";
+  loginWithDefaultGoogleAdmin,
+  googleSessionFromFirebaseUser,
+  logoutGoogleAdmin,
+  saveGoogleAdminSession,
+  type GoogleAdminSession,
+} from "@/lib/admin/googleAuth";
 import { createSongRequestInFirestore, fetchSongsFromFirestore, firebaseAvailable } from "@/lib/firebase/firestore";
-import { fetchAdminProfile, fetchAdminProfileByNaverId } from "@/lib/firebase/firestore";
-import { loginWithNaverOidc, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth";
+import { fetchAdminProfile, fetchAdminProfileByGoogleId } from "@/lib/firebase/firestore";
+import { loginWithGoogle, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth";
 import { describeFirebaseError } from "@/lib/firebase/errors";
 import { filterAndSortSongs } from "@/lib/songs/filter";
 import { loadLikedIds, loadRequests, loadSongs, saveLikedIds, saveRequests, saveSongs } from "@/lib/songs/storage";
@@ -92,7 +92,7 @@ export function SongbookApp() {
   const [toast, setToast] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [firebaseMode, setFirebaseMode] = useState(false);
-  const [adminSession, setAdminSession] = useState<NaverAdminSession | null>(null);
+  const [adminSession, setAdminSession] = useState<GoogleAdminSession | null>(null);
   const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
 
   useEffect(() => {
@@ -100,11 +100,11 @@ export function SongbookApp() {
       async function hydrate() {
         setLikedIds(loadLikedIds());
         setRequests(loadRequests());
-        const session = loadNaverAdminSession();
+        const session = loadGoogleAdminSession();
         setAdminSession(session);
 
         if (session) {
-          const localProfile = localAdminProfile(session.naverId);
+          const localProfile = localAdminProfile(session.googleId);
           setAdminProfile(localProfile);
         }
 
@@ -138,7 +138,7 @@ export function SongbookApp() {
 
     return subscribeAuth((user) => {
       if (!user) return;
-      const session = naverSessionFromFirebaseUser(user);
+      const session = googleSessionFromFirebaseUser(user);
       setAdminSession(session);
     });
   }, [firebaseMode]);
@@ -169,7 +169,7 @@ export function SongbookApp() {
   useEffect(() => {
     if (!adminSession || !firebaseMode) return;
 
-    const naverId = adminSession.naverId;
+    const googleId = adminSession.googleId;
     const firebaseUid = adminSession.firebaseUid;
     const timer = window.setTimeout(() => {
       async function verifyAdmin() {
@@ -177,10 +177,10 @@ export function SongbookApp() {
           const profile = firebaseUid
             ? await fetchAdminProfile(firebaseUid)
             : null;
-          const naverProfile = profile ? null : await fetchAdminProfileByNaverId(naverId);
-          setAdminProfile(profile ?? naverProfile ?? localAdminProfile(naverId));
+          const googleProfile = profile ? null : await fetchAdminProfileByGoogleId(googleId);
+          setAdminProfile(profile ?? googleProfile ?? localAdminProfile(googleId));
         } catch {
-          setAdminProfile(localAdminProfile(naverId));
+          setAdminProfile(localAdminProfile(googleId));
         }
       }
 
@@ -204,45 +204,45 @@ export function SongbookApp() {
     setToast(message);
   }
 
-  async function handleNaverLogin() {
+  async function handleGoogleLogin() {
     if (firebaseMode) {
       try {
-        const result = await loginWithNaverOidc();
-        const session = naverSessionFromFirebaseUser(result.user);
+        const result = await loginWithGoogle();
+        const session = googleSessionFromFirebaseUser(result.user);
         setAdminSession(session);
-        saveNaverAdminSession(session);
+        saveGoogleAdminSession(session);
 
-        const profile = (await fetchAdminProfile(session.firebaseUid ?? session.naverId))
-          ?? (await fetchAdminProfileByNaverId(session.naverId))
-          ?? localAdminProfile(session.naverId);
+        const profile = (await fetchAdminProfile(session.firebaseUid ?? session.googleId))
+          ?? (await fetchAdminProfileByGoogleId(session.googleId))
+          ?? localAdminProfile(session.googleId);
         setAdminProfile(profile);
-        showToast(profile ? "네이버로 로그인했어요" : "로그인했지만 관리자 권한이 없습니다");
+        showToast(profile ? "Google로 로그인했어요" : "로그인했지만 관리자 권한이 없습니다");
         return;
       } catch (error) {
-        console.error("Naver OIDC login failed", error);
-        showToast(`네이버 로그인 실패: ${describeFirebaseError(error)}`);
+        console.error("Google login failed", error);
+        showToast(`Google 로그인 실패: ${describeFirebaseError(error)}`);
         return;
       }
     }
 
-    const session = loginWithDefaultNaverAdmin();
+    const session = loginWithDefaultGoogleAdmin();
     setAdminSession(session);
 
-    let profile = localAdminProfile(session.naverId);
+    let profile = localAdminProfile(session.googleId);
     if (firebaseMode) {
       try {
-        profile = (await fetchAdminProfile(session.naverId)) ?? profile;
+        profile = (await fetchAdminProfile(session.googleId)) ?? profile;
       } catch {
-        profile = localAdminProfile(session.naverId);
+        profile = localAdminProfile(session.googleId);
       }
     }
 
     setAdminProfile(profile);
-    showToast(profile ? "네이버 기본 관리자로 로그인했어요" : "로그인했지만 관리자 권한이 없습니다");
+    showToast(profile ? "Google 기본 관리자로 로그인했어요" : "로그인했지만 관리자 권한이 없습니다");
   }
 
-  function handleNaverLogout() {
-    logoutNaverAdmin();
+  function handleGoogleLogout() {
+    logoutGoogleAdmin();
     void logoutAdmin();
     setAdminSession(null);
     setAdminProfile(null);
@@ -438,8 +438,8 @@ export function SongbookApp() {
           adminProfile={adminProfile}
           onReset={resetAll}
           onRequest={() => setRequestOpen(true)}
-          onNaverLogin={handleNaverLogin}
-          onLogout={handleNaverLogout}
+          onGoogleLogin={handleGoogleLogin}
+          onLogout={handleGoogleLogout}
         />
 
         <HeroSection
@@ -629,13 +629,13 @@ function NavBar({
   adminProfile,
   onReset,
   onRequest,
-  onNaverLogin,
+  onGoogleLogin,
   onLogout,
 }: {
   adminProfile: AdminProfile | null;
   onReset: () => void;
   onRequest: () => void;
-  onNaverLogin: () => void;
+  onGoogleLogin: () => void;
   onLogout: () => void;
 }) {
   return (
@@ -677,10 +677,10 @@ function NavBar({
         <div className="ml-auto flex items-center gap-2 md:ml-0">
           <button
             type="button"
-            onClick={onNaverLogin}
-            className="focus-ring inline-flex h-10 items-center gap-2 rounded-full bg-[#03C75A] px-4 text-sm font-extrabold text-white shadow-card"
+            onClick={onGoogleLogin}
+            className="focus-ring inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-sm font-extrabold text-ink shadow-card"
           >
-            N
+            G
             로그인
           </button>
           <button

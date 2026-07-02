@@ -1,6 +1,6 @@
 import {
   browserLocalPersistence,
-  OAuthProvider,
+  GoogleAuthProvider,
   onAuthStateChanged,
   setPersistence,
   signInWithEmailAndPassword,
@@ -9,8 +9,6 @@ import {
   type User,
 } from "firebase/auth";
 import { getFirebaseAuth } from "./client";
-
-export const naverProviderId = process.env.NEXT_PUBLIC_NAVER_OIDC_PROVIDER_ID || "oidc.naver";
 
 export function subscribeAuth(callback: (user: User | null) => void) {
   const auth = getFirebaseAuth();
@@ -30,13 +28,14 @@ export async function loginAdmin(email: string, password: string) {
   return signInWithEmailAndPassword(auth, email, password);
 }
 
-export async function loginWithNaverOidc() {
+export async function loginWithGoogle() {
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth 설정이 필요합니다.");
 
   await setPersistence(auth, browserLocalPersistence);
-  const provider = new OAuthProvider(naverProviderId);
-  provider.addScope("openid");
+  const provider = new GoogleAuthProvider();
+  provider.addScope("profile");
+  provider.addScope("email");
   return signInWithPopup(auth, provider);
 }
 

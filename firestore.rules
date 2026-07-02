@@ -11,14 +11,6 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
-    function hasNaverIdentity(naverId) {
-      return isSignedIn()
-        && request.auth.token.firebase != null
-        && request.auth.token.firebase.identities != null
-        && request.auth.token.firebase.identities["oidc.naver"] != null
-        && request.auth.token.firebase.identities["oidc.naver"].hasAny([naverId]);
-    }
-
     match /songs/{songId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
@@ -31,8 +23,7 @@ service cloud.firestore {
 
     match /admins/{uid} {
       allow read: if isAdmin()
-        || (isSignedIn() && request.auth.uid == uid)
-        || hasNaverIdentity(resource.data.naverId);
+        || (isSignedIn() && request.auth.uid == uid);
       allow create, update, delete: if isAdmin();
     }
 

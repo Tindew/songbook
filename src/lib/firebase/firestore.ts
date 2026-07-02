@@ -135,11 +135,11 @@ export async function fetchAdminProfile(uid: string) {
   return { uid, ...snapshot.data() } as AdminProfile;
 }
 
-export async function fetchAdminProfileByNaverId(naverId: string) {
+export async function fetchAdminProfileByGoogleId(googleId: string) {
   const db = getFirebaseDb();
   if (!db) return null;
 
-  const snapshot = await getDocs(query(collection(db, "admins"), where("naverId", "==", naverId), limit(1)));
+  const snapshot = await getDocs(query(collection(db, "admins"), where("googleId", "==", googleId), limit(1)));
   const first = snapshot.docs[0];
   return first ? ({ uid: first.id, ...first.data() } as AdminProfile) : null;
 }

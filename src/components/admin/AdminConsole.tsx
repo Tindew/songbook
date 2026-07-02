@@ -17,23 +17,23 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   loadLocalAdminIds,
-  loadNaverAdminSession,
+  loadGoogleAdminSession,
   localAdminProfile,
-  loginWithDefaultNaverAdmin,
-  naverSessionFromFirebaseUser,
-  logoutNaverAdmin,
+  loginWithDefaultGoogleAdmin,
+  googleSessionFromFirebaseUser,
+  logoutGoogleAdmin,
   saveLocalAdminId,
-  saveNaverAdminSession,
-  defaultNaverAdminId,
-  type NaverAdminSession,
-} from "@/lib/admin/naverAuth";
-import { loginWithNaverOidc, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth";
+  saveGoogleAdminSession,
+  defaultGoogleAdminId,
+  type GoogleAdminSession,
+} from "@/lib/admin/googleAuth";
+import { loginWithGoogle, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth";
 import { hasFirebaseConfig } from "@/lib/firebase/client";
 import { describeFirebaseError } from "@/lib/firebase/errors";
 import {
   deleteSongFromFirestore,
   fetchAdminProfile,
-  fetchAdminProfileByNaverId,
+  fetchAdminProfileByGoogleId,
   fetchAdminProfiles,
   fetchSongRequestsFromFirestore,
   fetchSongsFromFirestore,
@@ -89,7 +89,7 @@ const statusOptions: Array<{ value: SongStatus; label: string }> = [
 ];
 
 export function AdminConsole() {
-  const [session, setSession] = useState<NaverAdminSession | null>(null);
+  const [session, setSession] = useState<GoogleAdminSession | null>(null);
   const [admin, setAdmin] = useState<AdminProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [adminLoading, setAdminLoading] = useState(false);
@@ -132,18 +132,18 @@ export function AdminConsole() {
     if (configured) {
       return subscribeAuth((user) => {
         if (user) {
-          const nextSession = naverSessionFromFirebaseUser(user);
-          saveNaverAdminSession(nextSession);
+          const nextSession = googleSessionFromFirebaseUser(user);
+          saveGoogleAdminSession(nextSession);
           setSession(nextSession);
         } else {
-          setSession(loadNaverAdminSession());
+          setSession(loadGoogleAdminSession());
         }
         setAuthLoading(false);
       });
     }
 
     const timer = window.setTimeout(() => {
-      setSession(loadNaverAdminSession());
+      setSession(loadGoogleAdminSession());
       setAuthLoading(false);
     }, 0);
     return () => window.clearTimeout(timer);
@@ -155,19 +155,19 @@ export function AdminConsole() {
       return () => window.clearTimeout(timer);
     }
 
-    const naverId = session.naverId;
+    const googleId = session.googleId;
     const firebaseUid = session.firebaseUid;
     const timer = window.setTimeout(() => {
       async function loadAdmin() {
         setAdminLoading(true);
         try {
           const profile = configured && firebaseUid ? await fetchAdminProfile(firebaseUid) : null;
-          const naverProfile = configured && !profile ? await fetchAdminProfileByNaverId(naverId) : null;
-          const resolvedProfile = profile ?? naverProfile ?? localAdminProfile(naverId);
+          const googleProfile = configured && !profile ? await fetchAdminProfileByGoogleId(googleId) : null;
+          const resolvedProfile = profile ?? googleProfile ?? localAdminProfile(googleId);
           setAdmin(resolvedProfile);
           if (resolvedProfile) await refreshData();
         } catch {
-          const fallback = localAdminProfile(naverId);
+          const fallback = localAdminProfile(googleId);
           setAdmin(fallback);
           if (fallback) await refreshData();
           setMessage("Firestore 관리자 확인에 실패해 로컬 관리자 정보로 확인했습니다.");
@@ -184,29 +184,29 @@ export function AdminConsole() {
 
   const pendingRequests = useMemo(() => requests.filter((request) => request.status === "pending"), [requests]);
 
-  async function handleNaverLogin() {
+  async function handleGoogleLogin() {
     if (configured) {
       try {
-        const result = await loginWithNaverOidc();
-        const nextSession = naverSessionFromFirebaseUser(result.user);
-        saveNaverAdminSession(nextSession);
+        const result = await loginWithGoogle();
+        const nextSession = googleSessionFromFirebaseUser(result.user);
+        saveGoogleAdminSession(nextSession);
         setSession(nextSession);
-        setMessage("네이버로 로그인했습니다.");
+        setMessage("Google로 로그인했습니다.");
         return;
       } catch (error) {
-        console.error("Naver OIDC login failed", error);
-        setMessage(`네이버 로그인 실패: ${describeFirebaseError(error)}`);
+        console.error("Google login failed", error);
+        setMessage(`Google 로그인 실패: ${describeFirebaseError(error)}`);
         return;
       }
     }
 
-    const nextSession = loginWithDefaultNaverAdmin();
+    const nextSession = loginWithDefaultGoogleAdmin();
     setSession(nextSession);
-    setMessage("네이버 기본 관리자로 로그인했습니다.");
+    setMessage("Google 기본 관리자로 로그인했습니다.");
   }
 
   function handleLogout() {
-    logoutNaverAdmin();
+    logoutGoogleAdmin();
     void logoutAdmin();
     setSession(null);
     setAdmin(null);
@@ -343,9 +343,9 @@ export function AdminConsole() {
 
   async function addAdmin(event: FormEvent) {
     event.preventDefault();
-    const naverId = newAdminId.trim();
-    if (!naverId) {
-      setMessage("네이버 기준 아이디를 입력해주세요.");
+    const adminId = newAdminId.trim();
+    if (!adminId) {
+      setMessage("Firebase UID 또는 Google ID를 입력해주세요.");
       return;
     }
 
@@ -353,25 +353,25 @@ export function AdminConsole() {
     setMessage("");
 
     const profile: AdminProfile = {
-      uid: naverId,
-      email: `${naverId}@naver.local`,
+      uid: adminId,
+      email: `${adminId}@google.local`,
       role: "admin",
-      provider: "naver",
-      naverId,
-      displayName: newAdminName.trim() || naverId,
+      provider: "google",
+      googleId: adminId,
+      displayName: newAdminName.trim() || adminId,
       createdAt: new Date().toISOString(),
     };
 
     try {
       if (configured) await saveAdminProfile(profile);
-      saveLocalAdminId(naverId);
-      setAdmins((prev) => [profile, ...prev.filter((item) => item.uid !== naverId)]);
+      saveLocalAdminId(adminId);
+      setAdmins((prev) => [profile, ...prev.filter((item) => item.uid !== adminId)]);
       setNewAdminId("");
       setNewAdminName("");
       setMessage("관리자를 추가했습니다.");
     } catch {
-      saveLocalAdminId(naverId);
-      setAdmins((prev) => [profile, ...prev.filter((item) => item.uid !== naverId)]);
+      saveLocalAdminId(adminId);
+      setAdmins((prev) => [profile, ...prev.filter((item) => item.uid !== adminId)]);
       setMessage("Firestore 저장은 실패했지만 로컬 관리자 목록에 추가했습니다.");
     } finally {
       setBusy(false);
@@ -391,16 +391,16 @@ export function AdminConsole() {
           </div>
           <h2 className="mt-5 text-2xl font-extrabold text-ink">관리자 로그인</h2>
           <p className="mt-2 text-sm font-medium leading-6 text-muted">
-            Firebase OIDC 설정이 있으면 실제 네이버 로그인으로, 설정이 없으면 기본 관리자 ID로 로그인합니다.
+            Firebase 설정이 있으면 실제 Google 로그인으로, 설정이 없으면 기본 관리자 ID로 로그인합니다.
           </p>
           {message ? <Message text={message} /> : null}
           <button
             type="button"
-            onClick={handleNaverLogin}
+            onClick={handleGoogleLogin}
             disabled={busy}
-            className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#03C75A] text-sm font-extrabold text-white disabled:opacity-60"
+            className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-white text-sm font-extrabold text-ink shadow-card disabled:opacity-60"
           >
-            N 네이버로 로그인
+            G Google로 로그인
           </button>
         </div>
       </AdminShell>
@@ -421,10 +421,10 @@ export function AdminConsole() {
             <p>첫 관리자는 Firestore에 직접 추가해야 합니다.</p>
             <p className="mt-2">
               권장 문서 ID:{" "}
-              <code className="rounded bg-white px-1 text-ink">{session.firebaseUid || session.naverId}</code>
+              <code className="rounded bg-white px-1 text-ink">{session.firebaseUid || session.googleId}</code>
             </p>
             <p>
-              네이버 기준 ID: <code className="rounded bg-white px-1 text-ink">{session.naverId}</code>
+              Google ID: <code className="rounded bg-white px-1 text-ink">{session.googleId}</code>
             </p>
           </div>
           <button
@@ -447,7 +447,7 @@ export function AdminConsole() {
           <h2 className="text-2xl font-extrabold text-ink">노래책 운영 콘솔</h2>
           {session ? (
             <p className="mt-1 text-xs font-bold text-muted">
-              Firebase UID: {session.firebaseUid || "로컬 모드"} · 네이버 기준 ID: {session.naverId}
+              Firebase UID: {session.firebaseUid || "로컬 모드"} · Google ID: {session.googleId}
             </p>
           ) : null}
           {!configured ? <p className="mt-1 text-xs font-bold text-warning">Firebase 미설정 상태라 로컬 저장으로 동작합니다.</p> : null}
@@ -749,11 +749,11 @@ function AdminManager({
       <form onSubmit={onSubmit} className="rounded-[24px] border border-white/70 bg-white/80 p-5 shadow-card">
         <h3 className="text-lg font-extrabold text-ink">관리자 추가</h3>
         <p className="mt-2 text-sm font-medium leading-6 text-muted">
-          네이버로 로그인했을 때 식별할 기준 아이디를 추가합니다. 같은 아이디로 로그인하면 메인 화면에 설정 버튼이
-          표시됩니다.
+          새 관리자가 Google로 한 번 로그인한 뒤 표시되는 Firebase UID를 추가합니다. 해당 계정으로 로그인하면 메인
+          화면에 설정 버튼이 표시됩니다.
         </p>
         <div className="mt-5 space-y-4">
-          <AdminInput label="Firebase UID 또는 네이버 기준 ID" value={newAdminId} onChange={onIdChange} placeholder="설정 화면에 표시된 UID/ID" />
+          <AdminInput label="Firebase UID 또는 Google ID" value={newAdminId} onChange={onIdChange} placeholder="설정 화면에 표시된 UID/ID" />
           <AdminInput label="표시 이름" value={newAdminName} onChange={onNameChange} placeholder="예: 운영자" />
         </div>
         <button
@@ -777,11 +777,11 @@ function AdminManager({
                     {admin.role}
                   </span>
                   <span className="rounded-lg bg-[#E3F2EC] px-2 py-1 text-[11px] font-extrabold text-[#2E8B6B]">
-                    {admin.provider ?? "naver"}
+                    {admin.provider ?? "google"}
                   </span>
                 </div>
                 <div className="mt-2 text-sm font-extrabold text-ink">{admin.displayName || admin.uid}</div>
-                <div className="mt-1 text-xs font-bold text-muted">기준 아이디: {admin.naverId || admin.uid}</div>
+                <div className="mt-1 text-xs font-bold text-muted">기준 아이디: {admin.googleId || admin.uid}</div>
               </div>
             ))
           ) : (
@@ -944,6 +944,6 @@ function nextSongId(songs: Song[]) {
 function localAdminList() {
   const ids = Array.from(loadLocalAdminIds());
   const profiles = ids.map((id) => localAdminProfile(id)).filter((profile): profile is AdminProfile => Boolean(profile));
-  const defaultProfile = localAdminProfile(defaultNaverAdminId);
+  const defaultProfile = localAdminProfile(defaultGoogleAdminId);
   return defaultProfile ? [defaultProfile, ...profiles.filter((profile) => profile.uid !== defaultProfile.uid)] : profiles;
 }
