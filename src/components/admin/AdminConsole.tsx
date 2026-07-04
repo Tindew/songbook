@@ -538,7 +538,6 @@ export function AdminConsole() {
     <AdminShell title="관리자">
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-bold text-deep-lavender">{admin.email}</p>
           <h2 className="text-2xl font-extrabold text-ink">노래책 설정</h2>
           {!configured ? <p className="mt-1 text-xs font-bold text-warning">Firebase 미설정 상태라 로컬 저장으로 동작합니다.</p> : null}
         </div>
