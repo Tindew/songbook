@@ -33,6 +33,7 @@ import { loginWithGoogle, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth
 import { hasFirebaseConfig } from "@/lib/firebase/client";
 import { describeFirebaseError } from "@/lib/firebase/errors";
 import {
+  deleteSongRequestFromFirestore,
   deleteSongFromFirestore,
   fetchAdminProfileByIdentity,
   fetchAdminProfiles,
@@ -130,7 +131,7 @@ export function AdminConsole() {
           fetchSiteSettings(),
         ]);
         setSongs(nextSongs ?? []);
-        setRequests(nextRequests ?? []);
+        setRequests((nextRequests ?? []).filter((request) => request.status === "pending"));
         setAdmins(nextAdmins ?? localAdminList());
         setSettingsForm(settingsToForm(nextSettings));
         return;
@@ -140,7 +141,7 @@ export function AdminConsole() {
     }
 
     setSongs(loadSongs());
-    setRequests(loadRequests());
+    setRequests(loadRequests().filter((request) => request.status === "pending"));
     setAdmins(localAdminList());
     setSettingsForm(settingsToForm());
   }, [configured]);
@@ -386,9 +387,7 @@ export function AdminConsole() {
         await updateSongRequestInFirestore(request.id, { status: "approved", approvedSongId: song.id });
       }
       setSongs((prev) => [song, ...prev]);
-      const nextRequests = requests.map((item) =>
-        item.id === request.id ? { ...item, status: "approved" as const, approvedSongId: song.id } : item,
-      );
+      const nextRequests = requests.filter((item) => item.id !== request.id);
       setRequests(nextRequests);
       if (!configured) {
         saveSongs([song, ...songs]);
@@ -407,11 +406,11 @@ export function AdminConsole() {
     setMessage("");
 
     try {
-      if (configured) await updateSongRequestInFirestore(request.id, { status: "rejected" });
-      const nextRequests = requests.map((item) => (item.id === request.id ? { ...item, status: "rejected" as const } : item));
+      if (configured) await deleteSongRequestFromFirestore(request.id);
+      const nextRequests = requests.filter((item) => item.id !== request.id);
       setRequests(nextRequests);
       if (!configured) saveRequests(nextRequests);
-      setMessage("요청곡을 반려했습니다.");
+      setMessage("요청곡을 반려하고 기록을 삭제했습니다.");
     } catch {
       setMessage("요청 반려에 실패했습니다.");
     } finally {

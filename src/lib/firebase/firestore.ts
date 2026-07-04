@@ -127,6 +127,23 @@ export async function updateSongRequestInFirestore(requestId: string, patch: Par
   await updateDoc(snapshot.docs[0].ref, payload);
 }
 
+export async function deleteSongRequestFromFirestore(requestId: string) {
+  const db = getFirebaseDb();
+  if (!db) throw new Error("Firebase 설정이 필요합니다.");
+
+  try {
+    await deleteDoc(doc(db, "songRequests", requestId));
+    return;
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code !== "not-found") throw error;
+  }
+
+  const snapshot = await getDocs(query(collection(db, "songRequests"), where("id", "==", requestId), limit(1)));
+  if (!snapshot.docs.length) return;
+  await deleteDoc(snapshot.docs[0].ref);
+}
+
 export async function fetchSiteSettings() {
   const db = getFirebaseDb();
   if (!db) return defaultSiteSettings;
