@@ -22,3 +22,13 @@ export function youtubeThumbnailUrl(videoId: string, quality = "hqdefault") {
   if (!videoId) return "";
   return `https://i.ytimg.com/vi/${videoId}/${quality}.jpg`;
 }
+
+export const youtubeThumbnailQualities = ["maxresdefault", "sddefault", "hqdefault", "mqdefault", "default"] as const;
+
+export function youtubeThumbnailCandidates(videoId: string) {
+  return youtubeThumbnailQualities.map((quality) => youtubeThumbnailUrl(videoId, quality));
+}
+
+export function youtubeWatchUrl(videoId: string) {
+  return videoId ? `https://www.youtube.com/watch?v=${videoId}` : "";
+}

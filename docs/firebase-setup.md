@@ -14,6 +14,7 @@ NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
 NEXT_PUBLIC_FIREBASE_APP_ID=
 NEXT_PUBLIC_DEFAULT_GOOGLE_ADMIN_ID=default-admin
+YOUTUBE_API_KEY=
 ```
 
 설정 후 dev 서버를 재시작해야 합니다.
@@ -86,3 +87,44 @@ admins/{firebaseUid}
 ## 6. 보안 규칙
 
 `firestore.rules` 내용을 Firebase Console 또는 Firebase CLI로 배포합니다.
+
+## 7. YouTube 후보 추천
+
+관리자 노래 추가/수정 화면의 후보 검색은 `/api/youtube/search` route handler를 사용합니다.
+
+Vercel 환경변수에 아래 값을 추가하면 실제 YouTube Data API를 호출합니다.
+
+```env
+YOUTUBE_API_KEY=
+```
+
+이 값이 없으면 앱은 샘플 후보를 보여줍니다. 샘플 후보도 UI 테스트에는 사용할 수 있지만 실제 영상 URL은 저장되지 않을 수 있습니다.
+
+## 8. 사이트 설정
+
+관리자 페이지의 `사이트 설정` 탭에서 아래 값을 수정할 수 있습니다.
+
+- 사이트 제목
+- Hero 제목
+- Hero 설명
+- 공지사항
+- 노래 추가 요청 ON/OFF
+- 신청 문구 복사 ON/OFF
+
+저장 위치:
+
+```text
+siteSettings/main
+```
+
+## 9. 배포 후 확인
+
+Vercel 배포 후 아래를 확인합니다.
+
+1. Google 로그인
+2. `/admin` 접근
+3. 노래 추가/수정
+4. YouTube 후보 검색
+5. 요청곡 승인/반려
+6. 사이트 설정 저장
+7. 메인 페이지에서 설정 반영 확인

@@ -3,6 +3,7 @@
 import {
   Check,
   EyeOff,
+  ExternalLink,
   Loader2,
   LogOut,
   Music2,
@@ -36,14 +37,16 @@ import {
   fetchAdminProfiles,
   fetchSongRequestsFromFirestore,
   fetchSongsFromFirestore,
+  fetchSiteSettings,
+  saveSiteSettings,
   saveAdminProfile,
   saveSongToFirestore,
   updateSongInFirestore,
   updateSongRequestInFirestore,
 } from "@/lib/firebase/firestore";
 import { loadRequests, loadSongs, saveRequests, saveSongs } from "@/lib/songs/storage";
-import { extractYoutubeVideoId, youtubeThumbnailUrl } from "@/lib/songs/youtube";
-import type { AdminProfile, Song, SongRequest, SongStatus } from "@/types/song";
+import { extractYoutubeVideoId, youtubeThumbnailCandidates, youtubeThumbnailUrl } from "@/lib/songs/youtube";
+import type { AdminProfile, SiteSettings, Song, SongRequest, SongStatus, YoutubeCandidate } from "@/types/song";
 
 type SongForm = {
   id: string;
@@ -60,6 +63,15 @@ type SongForm = {
   likeCount: string;
   isFeatured: boolean;
   isHidden: boolean;
+};
+
+type SiteSettingsForm = {
+  siteTitle: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  announcement: string;
+  requestEnabled: boolean;
+  copyCommandEnabled: boolean;
 };
 
 const emptySongForm: SongForm = {
@@ -95,11 +107,14 @@ export function AdminConsole() {
   const [songs, setSongs] = useState<Song[]>([]);
   const [requests, setRequests] = useState<SongRequest[]>([]);
   const [admins, setAdmins] = useState<AdminProfile[]>([]);
-  const [activeTab, setActiveTab] = useState<"songs" | "requests" | "admins">("songs");
+  const [activeTab, setActiveTab] = useState<"songs" | "requests" | "admins" | "settings">("songs");
   const [songForm, setSongForm] = useState<SongForm>(emptySongForm);
+  const [settingsForm, setSettingsForm] = useState<SiteSettingsForm>(settingsToForm());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newAdminId, setNewAdminId] = useState("");
   const [newAdminName, setNewAdminName] = useState("");
+  const [youtubeCandidates, setYoutubeCandidates] = useState<YoutubeCandidate[]>([]);
+  const [youtubeSearching, setYoutubeSearching] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -108,14 +123,16 @@ export function AdminConsole() {
   const refreshData = useCallback(async () => {
     if (configured) {
       try {
-        const [nextSongs, nextRequests, nextAdmins] = await Promise.all([
+        const [nextSongs, nextRequests, nextAdmins, nextSettings] = await Promise.all([
           fetchSongsFromFirestore(),
           fetchSongRequestsFromFirestore(),
           fetchAdminProfiles(),
+          fetchSiteSettings(),
         ]);
         setSongs(nextSongs ?? []);
         setRequests(nextRequests ?? []);
         setAdmins(nextAdmins ?? localAdminList());
+        setSettingsForm(settingsToForm(nextSettings));
         return;
       } catch {
         setMessage("Firestore 데이터를 불러오지 못해 로컬 데이터를 표시합니다.");
@@ -125,6 +142,7 @@ export function AdminConsole() {
     setSongs(loadSongs());
     setRequests(loadRequests());
     setAdmins(localAdminList());
+    setSettingsForm(settingsToForm());
   }, [configured]);
 
   useEffect(() => {
@@ -216,6 +234,7 @@ export function AdminConsole() {
   function startCreate() {
     setEditingId(null);
     setSongForm({ ...emptySongForm, id: nextSongId(songs) });
+    setYoutubeCandidates([]);
   }
 
   function startEdit(song: Song) {
@@ -236,7 +255,42 @@ export function AdminConsole() {
       isFeatured: song.isFeatured,
       isHidden: song.isHidden,
     });
+    setYoutubeCandidates([]);
     setActiveTab("songs");
+  }
+
+  async function searchYoutubeCandidates() {
+    if (!songForm.title.trim() && !songForm.artist.trim()) {
+      setMessage("곡명 또는 가수명을 입력한 뒤 후보를 검색해주세요.");
+      return;
+    }
+
+    setYoutubeSearching(true);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/youtube/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: songForm.title, artist: songForm.artist }),
+      });
+      const data = (await response.json()) as { candidates?: YoutubeCandidate[]; source?: string };
+      setYoutubeCandidates(data.candidates ?? []);
+      setMessage(data.source === "stub" ? "YouTube API 키가 없어 샘플 후보를 표시합니다." : "YouTube 후보를 불러왔습니다.");
+    } catch {
+      setMessage("YouTube 후보를 불러오지 못했습니다.");
+    } finally {
+      setYoutubeSearching(false);
+    }
+  }
+
+  function selectYoutubeCandidate(candidate: YoutubeCandidate) {
+    setSongForm((prev) => ({
+      ...prev,
+      youtubeUrl: candidate.youtubeUrl ?? prev.youtubeUrl,
+      thumbnailUrl: candidate.thumbnailUrl ?? (candidate.videoId ? youtubeThumbnailUrl(candidate.videoId) : prev.thumbnailUrl),
+    }));
+    setMessage("YouTube 후보를 선택했습니다.");
   }
 
   async function saveSong(event: FormEvent) {
@@ -376,6 +430,23 @@ export function AdminConsole() {
     }
   }
 
+  async function saveSettings(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+
+    const settings = formToSettings(settingsForm);
+
+    try {
+      if (configured) await saveSiteSettings(settings);
+      setMessage("사이트 설정을 저장했습니다.");
+    } catch {
+      setMessage("사이트 설정 저장에 실패했습니다. 권한과 Firestore 규칙을 확인해주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (authLoading) {
     return <AdminShell title="관리자 확인 중"><LoadingPanel /></AdminShell>;
   }
@@ -482,6 +553,9 @@ export function AdminConsole() {
         <TabButton active={activeTab === "admins"} onClick={() => setActiveTab("admins")}>
           관리자 추가 {admins.length}
         </TabButton>
+        <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")}>
+          사이트 설정
+        </TabButton>
       </div>
 
       {activeTab === "songs" ? (
@@ -493,12 +567,16 @@ export function AdminConsole() {
             onSubmit={saveSong}
             onChange={(patch) => setSongForm((prev) => ({ ...prev, ...patch }))}
             onNew={startCreate}
+            candidates={youtubeCandidates}
+            searching={youtubeSearching}
+            onSearchYoutube={() => void searchYoutubeCandidates()}
+            onSelectYoutube={selectYoutubeCandidate}
           />
           <SongTable songs={songs} onEdit={startEdit} onToggleHidden={toggleHidden} onDelete={removeSong} />
         </div>
       ) : activeTab === "requests" ? (
         <RequestTable requests={requests} busy={busy} onApprove={approveRequest} onReject={rejectRequest} />
-      ) : (
+      ) : activeTab === "admins" ? (
         <AdminManager
           admins={admins}
           newAdminId={newAdminId}
@@ -507,6 +585,13 @@ export function AdminConsole() {
           onSubmit={addAdmin}
           onIdChange={setNewAdminId}
           onNameChange={setNewAdminName}
+        />
+      ) : (
+        <SettingsPanel
+          form={settingsForm}
+          busy={busy}
+          onSubmit={saveSettings}
+          onChange={(patch) => setSettingsForm((prev) => ({ ...prev, ...patch }))}
         />
       )}
     </AdminShell>
@@ -545,17 +630,28 @@ function SongEditor({
   form,
   editingId,
   busy,
+  candidates,
+  searching,
   onSubmit,
   onChange,
   onNew,
+  onSearchYoutube,
+  onSelectYoutube,
 }: {
   form: SongForm;
   editingId: string | null;
   busy: boolean;
+  candidates: YoutubeCandidate[];
+  searching: boolean;
   onSubmit: (event: FormEvent) => void;
   onChange: (patch: Partial<SongForm>) => void;
   onNew: () => void;
+  onSearchYoutube: () => void;
+  onSelectYoutube: (candidate: YoutubeCandidate) => void;
 }) {
+  const videoId = extractYoutubeVideoId(form.youtubeUrl);
+  const previewUrl = form.thumbnailUrl || youtubeThumbnailUrl(videoId);
+
   return (
     <form onSubmit={onSubmit} className="rounded-[24px] border border-white/70 bg-white/80 p-5 shadow-card">
       <div className="flex items-center justify-between gap-3">
@@ -603,8 +699,66 @@ function SongEditor({
             </select>
           </label>
         </div>
-        <AdminInput label="YouTube URL" value={form.youtubeUrl} onChange={(value) => onChange({ youtubeUrl: value })} />
-        <AdminInput label="썸네일 URL" value={form.thumbnailUrl} onChange={(value) => onChange({ thumbnailUrl: value })} />
+        <div className="rounded-2xl border border-[#EFE6D6] bg-[#F8F2E8] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-extrabold text-ink">YouTube 썸네일</h4>
+              <p className="mt-1 text-xs font-semibold text-muted">URL을 넣거나 후보를 선택하면 자동으로 카드에 반영됩니다.</p>
+            </div>
+            <button
+              type="button"
+              onClick={onSearchYoutube}
+              disabled={searching}
+              className="inline-flex h-10 items-center gap-2 rounded-2xl bg-white px-3 text-xs font-extrabold text-deep-lavender shadow-card disabled:opacity-60"
+            >
+              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              후보 검색
+            </button>
+          </div>
+          <div className="mt-4 overflow-hidden rounded-2xl border border-white bg-white">
+            <ThumbnailPreview url={previewUrl} videoId={videoId} title={form.title || "썸네일 미리보기"} />
+          </div>
+          <div className="mt-4 space-y-4">
+            <AdminInput label="YouTube URL" value={form.youtubeUrl} onChange={(value) => onChange({ youtubeUrl: value })} />
+            <AdminInput label="썸네일 URL" value={form.thumbnailUrl} onChange={(value) => onChange({ thumbnailUrl: value })} />
+          </div>
+          {candidates.length ? (
+            <div className="mt-4 space-y-2">
+              {candidates.map((candidate) => (
+                <button
+                  key={candidate.id}
+                  type="button"
+                  onClick={() => onSelectYoutube(candidate)}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-[#EFE6D6] bg-white p-3 text-left transition hover:border-deep-lavender"
+                >
+                  <div
+                    className="grid h-12 w-20 shrink-0 place-items-center overflow-hidden rounded-xl bg-pale-lavender text-xs font-extrabold text-deep-lavender"
+                    style={candidate.thumbnailUrl ? { backgroundImage: `url(${candidate.thumbnailUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+                  >
+                    {candidate.thumbnailUrl ? "" : `${candidate.confidence}%`}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-extrabold text-ink">{candidate.title}</div>
+                    <div className="mt-1 truncate text-xs font-bold text-muted">
+                      {candidate.channelTitle} · 후보 {candidate.confidence}% {candidate.official ? "· 공식" : ""}
+                    </div>
+                  </div>
+                  {candidate.youtubeUrl ? (
+                    <a
+                      href={candidate.youtubeUrl}
+                      target="_blank"
+                      onClick={(event) => event.stopPropagation()}
+                      className="grid h-9 w-9 place-items-center rounded-full bg-[#F8F2E8] text-muted"
+                      aria-label="YouTube 열기"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
         <AdminInput label="좋아요 수" value={form.likeCount} onChange={(value) => onChange({ likeCount: value })} />
         <label>
           <span className="text-sm font-extrabold text-ink">메모</span>
@@ -791,6 +945,105 @@ function AdminManager({
   );
 }
 
+function SettingsPanel({
+  form,
+  busy,
+  onSubmit,
+  onChange,
+}: {
+  form: SiteSettingsForm;
+  busy: boolean;
+  onSubmit: (event: FormEvent) => void;
+  onChange: (patch: Partial<SiteSettingsForm>) => void;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="mt-6 rounded-[24px] border border-white/70 bg-white/80 p-5 shadow-card">
+      <h3 className="text-lg font-extrabold text-ink">사이트 설정</h3>
+      <p className="mt-2 text-sm font-medium leading-6 text-muted">메인 문구와 사용자 기능 노출 여부를 관리합니다.</p>
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <AdminInput label="사이트 제목" value={form.siteTitle} onChange={(value) => onChange({ siteTitle: value })} />
+        <AdminInput label="Hero 제목" value={form.heroTitle} onChange={(value) => onChange({ heroTitle: value })} />
+        <label className="md:col-span-2">
+          <span className="text-sm font-extrabold text-ink">Hero 설명</span>
+          <textarea
+            value={form.heroSubtitle}
+            onChange={(event) => onChange({ heroSubtitle: event.target.value })}
+            rows={3}
+            className="mt-2 w-full resize-none rounded-2xl border border-[#E7DEF7] bg-white p-3 text-sm font-semibold outline-none"
+          />
+        </label>
+        <label className="md:col-span-2">
+          <span className="text-sm font-extrabold text-ink">공지사항</span>
+          <textarea
+            value={form.announcement}
+            onChange={(event) => onChange({ announcement: event.target.value })}
+            rows={2}
+            className="mt-2 w-full resize-none rounded-2xl border border-[#E7DEF7] bg-white p-3 text-sm font-semibold outline-none"
+            placeholder="비워두면 표시하지 않습니다"
+          />
+        </label>
+        <div className="flex flex-wrap gap-4 text-sm font-bold text-ink md:col-span-2">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.requestEnabled}
+              onChange={(event) => onChange({ requestEnabled: event.target.checked })}
+            />
+            노래 추가 요청 허용
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.copyCommandEnabled}
+              onChange={(event) => onChange({ copyCommandEnabled: event.target.checked })}
+            />
+            신청 문구 복사 허용
+          </label>
+        </div>
+      </div>
+      <button
+        type="submit"
+        disabled={busy}
+        className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-deep-lavender px-5 text-sm font-extrabold text-white disabled:opacity-60"
+      >
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+        설정 저장
+      </button>
+    </form>
+  );
+}
+
+function ThumbnailPreview({ url, videoId, title }: { url: string; videoId: string; title: string }) {
+  const fallbackUrls = videoId ? youtubeThumbnailCandidates(videoId) : [];
+  const [index, setIndex] = useState(0);
+  const src = url || fallbackUrls[index] || "";
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIndex(0), 0);
+    return () => window.clearTimeout(timer);
+  }, [url, videoId]);
+
+  if (!src) {
+    return (
+      <div className="grid aspect-video place-items-center bg-gradient-to-br from-lavender to-deep-lavender text-sm font-extrabold text-white">
+        썸네일 미리보기
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={`${title} 썸네일 미리보기`}
+      className="aspect-video w-full object-cover"
+      onError={() => {
+        if (index < fallbackUrls.length - 1) setIndex((prev) => prev + 1);
+      }}
+    />
+  );
+}
+
 function AdminInput({
   label,
   value,
@@ -944,4 +1197,27 @@ function localAdminList() {
   const profiles = ids.map((id) => localAdminProfile(id)).filter((profile): profile is AdminProfile => Boolean(profile));
   const defaultProfile = localAdminProfile(defaultGoogleAdminId);
   return defaultProfile ? [defaultProfile, ...profiles.filter((profile) => profile.uid !== defaultProfile.uid)] : profiles;
+}
+
+function settingsToForm(settings?: SiteSettings): SiteSettingsForm {
+  return {
+    siteTitle: settings?.siteTitle ?? "로션욤 노래책",
+    heroTitle: settings?.heroTitle ?? "오늘 뭐 불러욤?",
+    heroSubtitle: settings?.heroSubtitle ?? "곡명, 가수, 분위기로 빠르게 찾고 좋아요로 저장하세요.",
+    announcement: settings?.announcement ?? "",
+    requestEnabled: settings?.requestEnabled ?? true,
+    copyCommandEnabled: settings?.copyCommandEnabled ?? true,
+  };
+}
+
+function formToSettings(form: SiteSettingsForm): SiteSettings {
+  return {
+    siteTitle: form.siteTitle.trim() || "로션욤 노래책",
+    heroTitle: form.heroTitle.trim() || "오늘 뭐 불러욤?",
+    heroSubtitle: form.heroSubtitle.trim() || "곡명, 가수, 분위기로 빠르게 찾고 좋아요로 저장하세요.",
+    announcement: form.announcement.trim(),
+    requestEnabled: form.requestEnabled,
+    copyCommandEnabled: form.copyCommandEnabled,
+    updatedAt: new Date().toISOString(),
+  };
 }

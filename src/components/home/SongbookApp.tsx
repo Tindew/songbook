@@ -29,14 +29,20 @@ import {
   saveGoogleAdminSession,
   type GoogleAdminSession,
 } from "@/lib/admin/googleAuth";
-import { createSongRequestInFirestore, fetchSongsFromFirestore, firebaseAvailable } from "@/lib/firebase/firestore";
+import {
+  createSongRequestInFirestore,
+  defaultSiteSettings,
+  fetchSiteSettings,
+  fetchSongsFromFirestore,
+  firebaseAvailable,
+} from "@/lib/firebase/firestore";
 import { fetchAdminProfile } from "@/lib/firebase/firestore";
 import { loginWithGoogle, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth";
 import { describeFirebaseError } from "@/lib/firebase/errors";
 import { filterAndSortSongs } from "@/lib/songs/filter";
 import { loadLikedIds, loadRequests, loadSongs, saveLikedIds, saveRequests, saveSongs } from "@/lib/songs/storage";
-import { extractYoutubeVideoId, youtubeThumbnailUrl } from "@/lib/songs/youtube";
-import type { AdminProfile, Song, SongRequest, SortOption, ViewMode, YoutubeCandidate } from "@/types/song";
+import { extractYoutubeVideoId, youtubeThumbnailCandidates, youtubeThumbnailUrl } from "@/lib/songs/youtube";
+import type { AdminProfile, SiteSettings, Song, SongRequest, SortOption, ViewMode, YoutubeCandidate } from "@/types/song";
 
 const gradientPairs = [
   ["#B9A7FF", "#7B61FF"],
@@ -92,6 +98,7 @@ export function SongbookApp() {
   const [toast, setToast] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [firebaseMode, setFirebaseMode] = useState(false);
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(defaultSiteSettings);
   const [adminSession, setAdminSession] = useState<GoogleAdminSession | null>(null);
   const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
 
@@ -110,7 +117,8 @@ export function SongbookApp() {
 
         if (firebaseAvailable()) {
           try {
-            const firestoreSongs = await fetchSongsFromFirestore();
+            const [firestoreSongs, settings] = await Promise.all([fetchSongsFromFirestore(), fetchSiteSettings()]);
+            setSiteSettings(settings);
             if (firestoreSongs) {
               setSongs(firestoreSongs);
               setFirebaseMode(true);
@@ -238,6 +246,15 @@ export function SongbookApp() {
     showToast(profile ? "Google 기본 관리자로 로그인했어요" : "로그인했지만 관리자 권한이 없습니다");
   }
 
+  function openRequestModal() {
+    if (!siteSettings.requestEnabled) {
+      showToast("지금은 노래 추가 요청이 잠시 닫혀 있어요");
+      return;
+    }
+
+    setRequestOpen(true);
+  }
+
   function handleGoogleLogout() {
     logoutGoogleAdmin();
     void logoutAdmin();
@@ -275,6 +292,11 @@ export function SongbookApp() {
 
   async function copyCommand(song: Song, event?: MouseEvent) {
     event?.stopPropagation();
+    if (!siteSettings.copyCommandEnabled) {
+      showToast("지금은 신청 문구 복사가 잠시 닫혀 있어요");
+      return;
+    }
+
     try {
       await navigator.clipboard.writeText(song.requestCommand);
       showToast("신청 문구를 복사했어요");
@@ -432,24 +454,32 @@ export function SongbookApp() {
     <main className="songbook-shell pb-20">
       <div className="container-main">
         <NavBar
+          siteTitle={siteSettings.siteTitle}
           adminProfile={adminProfile}
           onReset={resetAll}
-          onRequest={() => setRequestOpen(true)}
+          onRequest={openRequestModal}
           onGoogleLogin={handleGoogleLogin}
           onLogout={handleGoogleLogout}
         />
 
         <HeroSection
           songs={visibleSongs.length ? visibleSongs : songs}
+          settings={siteSettings}
           favoriteCount={favoriteCount}
           featuredCount={featuredCount}
           recentCount={recentCount}
           onFind={scrollToSongbook}
           onRandom={randomPick}
-          onRequest={() => setRequestOpen(true)}
+          onRequest={openRequestModal}
         />
 
         <FeatureStrip />
+
+        {siteSettings.announcement ? (
+          <section className="mt-5 rounded-[22px] border border-[#E7D6BE] bg-white/75 p-4 text-sm font-bold leading-6 text-[#7A5A2E] shadow-card">
+            {siteSettings.announcement}
+          </section>
+        ) : null}
 
         <section
           id="songbook"
@@ -562,7 +592,7 @@ export function SongbookApp() {
             </section>
           )
         ) : (
-          <EmptyState onReset={resetAll} onRequest={() => setRequestOpen(true)} />
+          <EmptyState onReset={resetAll} onRequest={openRequestModal} />
         )}
 
         <section className="mt-16 rounded-[28px] border border-white/70 bg-white/70 p-7 shadow-card md:flex md:items-center md:justify-between md:p-9">
@@ -570,14 +600,14 @@ export function SongbookApp() {
             <p className="text-sm font-extrabold text-deep-lavender">찾는 노래가 없다면</p>
             <h2 className="mt-2 text-2xl font-extrabold text-ink md:text-3xl">노래 추가 요청을 남겨주세요.</h2>
             <p className="mt-3 max-w-2xl text-sm font-medium leading-6 text-muted">
-              지금은 localStorage에 저장되고 목록에 바로 반영됩니다. 다음 단계에서 Firestore 요청 DB로 그대로 연결할 수
-              있게 구성해두었습니다.
+              요청은 운영자가 확인한 뒤 노래책에 반영됩니다. YouTube 링크를 함께 남기면 썸네일 후보 확인이 빨라집니다.
             </p>
           </div>
           <button
             type="button"
-            onClick={() => setRequestOpen(true)}
-            className="focus-ring lift mt-6 inline-flex h-12 items-center gap-2 rounded-2xl bg-deep-lavender px-5 text-sm font-extrabold text-white shadow-[0_12px_26px_rgba(123,97,255,.30)] md:mt-0"
+            onClick={openRequestModal}
+            disabled={!siteSettings.requestEnabled}
+            className="focus-ring lift mt-6 inline-flex h-12 items-center gap-2 rounded-2xl bg-deep-lavender px-5 text-sm font-extrabold text-white shadow-[0_12px_26px_rgba(123,97,255,.30)] disabled:opacity-50 md:mt-0"
           >
             <Plus className="h-4 w-4" />
             노래 추가 요청
@@ -585,7 +615,7 @@ export function SongbookApp() {
         </section>
 
         <footer className="py-12 text-center text-xs font-semibold text-muted">
-          로션욤 노래책 · 검색, 좋아요, 랜덤, 요청까지 촉촉하게 준비 중
+          {siteSettings.siteTitle} · 검색, 좋아요, 랜덤, 요청까지 촉촉하게 준비 중
         </footer>
       </div>
 
@@ -623,12 +653,14 @@ export function SongbookApp() {
 }
 
 function NavBar({
+  siteTitle,
   adminProfile,
   onReset,
   onRequest,
   onGoogleLogin,
   onLogout,
 }: {
+  siteTitle: string;
   adminProfile: AdminProfile | null;
   onReset: () => void;
   onRequest: () => void;
@@ -641,7 +673,7 @@ function NavBar({
         <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-lavender to-deep-lavender text-white shadow-[0_6px_14px_rgba(123,97,255,.32)]">
           <Music2 className="h-5 w-5" />
         </span>
-        <span className="text-[17px] font-extrabold text-ink">로션욤 노래책</span>
+        <span className="text-[17px] font-extrabold text-ink">{siteTitle}</span>
       </button>
       <div className="ml-auto hidden items-center gap-2 text-sm font-bold text-muted md:flex">
         <a className="rounded-full px-3 py-2 hover:bg-white/70" href="#songbook">
@@ -696,6 +728,7 @@ function NavBar({
 
 function HeroSection({
   songs,
+  settings,
   favoriteCount,
   featuredCount,
   recentCount,
@@ -704,6 +737,7 @@ function HeroSection({
   onRequest,
 }: {
   songs: Song[];
+  settings: SiteSettings;
   favoriteCount: number;
   featuredCount: number;
   recentCount: number;
@@ -719,13 +753,12 @@ function HeroSection({
           총 {songs.length}곡 · 로션픽 업데이트 중
         </span>
         <h1 className="mt-6 max-w-2xl text-[42px] font-extrabold leading-[1.06] text-ink md:text-[58px]">
-          오늘 뭐 불러욤?
+          {settings.heroTitle}
           <br />
-          로션욤 노래책에서 골라봐요.
+          {settings.siteTitle}에서 골라봐요.
         </h1>
         <p className="mt-6 max-w-[520px] text-base font-medium leading-7 text-muted">
-          곡명, 가수, 분위기로 빠르게 찾고 좋아요로 저장하세요. 유튜브 썸네일 후보까지 염두에 둔 카드형
-          노래책입니다.
+          {settings.heroSubtitle}
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <button
@@ -977,8 +1010,16 @@ function SongRow({
 }
 
 function Thumbnail({ song, className }: { song: Song; className: string }) {
-  const videoThumb = song.youtubeVideoId ? youtubeThumbnailUrl(song.youtubeVideoId) : song.thumbnailUrl;
+  const fallbacks = song.youtubeVideoId ? youtubeThumbnailCandidates(song.youtubeVideoId) : [];
+  const thumbnailSources = song.thumbnailUrl ? [song.thumbnailUrl, ...fallbacks.filter((url) => url !== song.thumbnailUrl)] : fallbacks;
+  const [fallbackIndex, setFallbackIndex] = useState(0);
+  const videoThumb = thumbnailSources[fallbackIndex] || "";
   const gradient = gradientFor(song.id + song.title);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setFallbackIndex(0), 0);
+    return () => window.clearTimeout(timer);
+  }, [song.thumbnailUrl, song.youtubeVideoId]);
 
   return (
     <div className={`relative overflow-hidden bg-cover bg-center ${className}`} style={{ background: gradient }}>
@@ -989,7 +1030,11 @@ function Thumbnail({ song, className }: { song: Song; className: string }) {
           alt={`${song.title} 썸네일`}
           className="h-full w-full object-cover opacity-95 transition duration-300 group-hover:scale-105"
           onError={(event) => {
-            event.currentTarget.style.display = "none";
+            if (fallbackIndex < thumbnailSources.length - 1) {
+              setFallbackIndex((prev) => prev + 1);
+            } else {
+              event.currentTarget.style.display = "none";
+            }
           }}
         />
       ) : null}

@@ -68,8 +68,11 @@ export type ViewMode = "card" | "compact";
 
 export type YoutubeCandidate = {
   id: string;
+  videoId?: string;
   title: string;
   channelTitle: string;
+  youtubeUrl?: string;
+  thumbnailUrl?: string;
   confidence: number;
   official: boolean;
   gradientSeed: string;

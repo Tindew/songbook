@@ -11,13 +11,41 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
+    function validSong(data) {
+      return data.keys().hasAll(['title', 'artist', 'tags', 'genres', 'status', 'requestCommand', 'isHidden'])
+        && data.title is string
+        && data.artist is string
+        && data.tags is list
+        && data.genres is list
+        && data.status in ['available', 'practice', 'condition', 'blocked', 'special']
+        && data.requestCommand is string
+        && data.isHidden is bool;
+    }
+
+    function validSongRequest(data) {
+      return data.keys().hasAll(['title', 'artist', 'status', 'createdAt'])
+        && data.title is string
+        && data.artist is string
+        && data.status in ['pending', 'approved', 'rejected'];
+    }
+
+    function validSiteSettings(data) {
+      return data.keys().hasAll(['siteTitle', 'heroTitle', 'heroSubtitle', 'requestEnabled', 'copyCommandEnabled'])
+        && data.siteTitle is string
+        && data.heroTitle is string
+        && data.heroSubtitle is string
+        && data.requestEnabled is bool
+        && data.copyCommandEnabled is bool;
+    }
+
     match /songs/{songId} {
       allow read: if true;
-      allow create, update, delete: if isAdmin();
+      allow create, update: if isAdmin() && validSong(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     match /songRequests/{requestId} {
-      allow create: if true;
+      allow create: if validSongRequest(request.resource.data) && request.resource.data.status == 'pending';
       allow read, update, delete: if isAdmin();
     }
 
@@ -29,7 +57,7 @@ service cloud.firestore {
 
     match /siteSettings/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() && validSiteSettings(request.resource.data);
     }
   }
 }

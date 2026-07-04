@@ -125,6 +125,19 @@ export async function fetchSiteSettings() {
   return { ...defaultSiteSettings, ...snapshot.data() } as SiteSettings;
 }
 
+export async function saveSiteSettings(settings: SiteSettings) {
+  const db = getFirebaseDb();
+  if (!db) throw new Error("Firebase 설정이 필요합니다.");
+
+  await setDoc(
+    doc(db, "siteSettings", "main"),
+    cleanRecord({
+      ...settings,
+      updatedAt: new Date().toISOString(),
+    }),
+  );
+}
+
 export async function fetchAdminProfile(uid: string) {
   const db = getFirebaseDb();
   if (!db) return null;
