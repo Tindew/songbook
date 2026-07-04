@@ -1456,7 +1456,8 @@ function thumbnailBadge(song: Song) {
   if (song.thumbnailSource === "manual") return null;
   if (song.thumbnailSource === "pending" || !song.thumbnailConfidence) return "썸네일 대기";
   if (song.thumbnailSource === "default") return "기본 썸네일";
-  return `공식 후보 ${song.thumbnailConfidence}%`;
+  // 승인된 요청곡의 '공식 후보 n%' 뱃지는 노출하지 않는다.
+  return null;
 }
 
 function gradientFor(seed: string) {
