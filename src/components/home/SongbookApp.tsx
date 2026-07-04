@@ -7,7 +7,6 @@ import {
   List,
   Loader2,
   LogOut,
-  Music2,
   Plus,
   RotateCcw,
   Search,
@@ -17,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { defaultTags, songTagOptions } from "@/data/seedSongs";
 import {
@@ -656,13 +656,13 @@ function NavBar({
   return (
     <nav className="sticky top-3 z-40 mt-4 flex items-center gap-3 rounded-full border border-white/70 bg-cream/80 px-4 py-3 shadow-card backdrop-blur-xl">
       <button type="button" onClick={onReset} className="focus-ring flex items-center gap-3 rounded-full">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-lavender to-deep-lavender text-white shadow-[0_6px_14px_rgba(123,97,255,.32)]">
-          <Music2 className="h-5 w-5" />
+        <span className="grid h-9 w-9 place-items-center rounded-xl">
+          <Image src="/logo.svg" alt="" width={36} height={36} className="h-9 w-9" />
         </span>
         <span className="text-[17px] font-extrabold text-ink">{siteTitle}</span>
       </button>
       {adminProfile ? (
-        <div className="ml-auto flex items-center gap-2 md:ml-0">
+        <div className="ml-auto flex items-center gap-2">
           <Link
             href="/admin"
             className="focus-ring inline-flex h-10 items-center gap-2 rounded-full bg-deep-lavender px-4 text-sm font-extrabold text-white shadow-card"
@@ -681,7 +681,7 @@ function NavBar({
           </button>
         </div>
       ) : (
-        <div className="ml-auto flex items-center gap-2 md:ml-0">
+        <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
             onClick={onGoogleLogin}
@@ -1084,9 +1084,11 @@ function DetailModal({
             </button>
           </div>
           <TagList tags={song.tags} />
-          <div className="mt-5 rounded-2xl bg-[#F8F2E8] p-4 text-sm font-medium leading-6 text-muted">
-            {song.memo || "메모가 아직 없어요."}
-          </div>
+          {song.memo && (
+            <div className="mt-5 rounded-2xl bg-[#F8F2E8] p-4 text-sm font-medium leading-6 text-muted">
+              {song.memo}
+            </div>
+          )}
           <div className="mt-4 rounded-2xl border border-[#EFE6D6] bg-white p-4 text-sm font-bold text-[#4a3f6b]">
             {song.requestCommand}
           </div>
@@ -1337,7 +1339,7 @@ function ModalShell({ children, onClose }: { children: React.ReactNode; onClose:
       onMouseDown={onClose}
       className="fixed inset-0 z-50 grid place-items-center bg-ink/35 p-4 backdrop-blur-sm"
     >
-      <div role="presentation" onMouseDown={(event) => event.stopPropagation()} className="w-full">
+      <div role="presentation" onMouseDown={(event) => event.stopPropagation()} className="flex w-full justify-center">
         {children}
       </div>
     </div>

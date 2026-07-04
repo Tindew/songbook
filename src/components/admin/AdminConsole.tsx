@@ -6,7 +6,6 @@ import {
   ExternalLink,
   Loader2,
   LogOut,
-  Music2,
   Pencil,
   Plus,
   RefreshCw,
@@ -15,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { songTagOptions } from "@/data/seedSongs";
 import {
@@ -639,8 +639,8 @@ function AdminShell({ title, children }: { title: string; children: React.ReactN
       <div className="container-main">
         <nav className="sticky top-3 z-40 mt-4 flex items-center gap-3 rounded-full border border-white/70 bg-cream/80 px-4 py-3 shadow-card backdrop-blur-xl">
           <Link href="/" className="flex items-center gap-3 rounded-full">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-lavender to-deep-lavender text-white shadow-[0_6px_14px_rgba(123,97,255,.32)]">
-              <Music2 className="h-5 w-5" />
+            <span className="grid h-9 w-9 place-items-center rounded-xl">
+              <Image src="/logo.svg" alt="" width={36} height={36} className="h-9 w-9" />
             </span>
             <span className="text-[17px] font-extrabold text-ink">로션욤 노래책</span>
           </Link>
