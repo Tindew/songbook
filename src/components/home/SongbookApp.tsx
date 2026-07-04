@@ -989,7 +989,6 @@ function Thumbnail({ song, className }: { song: Song; className: string }) {
         />
       ) : null}
       <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/18" />
-      <div className="absolute bottom-3 right-4 text-4xl font-extrabold text-white/60">{song.title.trim().charAt(0)}</div>
     </div>
   );
 }
