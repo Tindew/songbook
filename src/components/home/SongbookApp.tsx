@@ -399,7 +399,7 @@ export function SongbookApp() {
 
     const pick = visibleSongs[Math.floor(Math.random() * visibleSongs.length)];
     setHighlightId(pick.id);
-    showToast(`오늘의 촉촉 랜덤곡은 '${pick.title}'이에요`);
+    showToast(`오늘의 랜덤곡은 '${pick.title}'이에요`);
 
     window.setTimeout(() => {
       const el = document.getElementById(`song-${pick.id}`);
@@ -679,7 +679,7 @@ export function SongbookApp() {
             <p className="text-sm font-extrabold text-deep-lavender">찾는 노래가 없다면</p>
             <h2 className="mt-2 text-2xl font-extrabold text-ink md:text-3xl">노래 추가 요청을 남겨주세요.</h2>
             <p className="mt-3 max-w-2xl text-sm font-medium leading-6 text-muted">
-              요청은 운영자가 확인한 뒤 노래책에 반영됩니다. YouTube 링크를 함께 남기면 썸네일 후보 확인이 빨라집니다.
+              요청은 로션욤이 확인한 뒤 노래책에 반영됩니다.
             </p>
           </div>
           <button
