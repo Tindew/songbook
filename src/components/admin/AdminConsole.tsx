@@ -559,7 +559,7 @@ export function AdminConsole() {
       </div>
 
       {activeTab === "songs" ? (
-        <div className="mt-6 grid gap-6 lg:grid-cols-[420px_1fr]">
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
           <SongEditor
             form={songForm}
             editingId={editingId}
@@ -653,7 +653,7 @@ function SongEditor({
   const previewUrl = form.thumbnailUrl || youtubeThumbnailUrl(videoId);
 
   return (
-    <form onSubmit={onSubmit} className="rounded-[24px] border border-white/70 bg-white/80 p-5 shadow-card">
+    <form onSubmit={onSubmit} className="min-w-0 rounded-[24px] border border-white/70 bg-white/80 p-5 shadow-card">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-lg font-extrabold text-ink">{editingId ? "노래 수정" : "노래 추가"}</h3>
         <button
@@ -729,7 +729,7 @@ function SongEditor({
                   key={candidate.id}
                   type="button"
                   onClick={() => onSelectYoutube(candidate)}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-[#EFE6D6] bg-white p-3 text-left transition hover:border-deep-lavender"
+                  className="flex min-w-0 w-full items-center gap-3 rounded-2xl border border-[#EFE6D6] bg-white p-3 text-left transition hover:border-deep-lavender"
                 >
                   <div
                     className="grid h-12 w-20 shrink-0 place-items-center overflow-hidden rounded-xl bg-pale-lavender text-xs font-extrabold text-deep-lavender"
@@ -804,12 +804,12 @@ function SongTable({
   onDelete: (song: Song) => void;
 }) {
   return (
-    <section className="rounded-[24px] border border-white/70 bg-white/80 p-5 shadow-card">
+    <section className="min-w-0 rounded-[24px] border border-white/70 bg-white/80 p-5 shadow-card">
       <h3 className="text-lg font-extrabold text-ink">등록된 노래</h3>
       <div className="mt-4 space-y-3">
         {songs.map((song) => (
-          <div key={song.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#EFE6D6] bg-white p-3">
-            <div className="min-w-[220px] flex-1">
+          <div key={song.id} className="flex min-w-0 flex-wrap items-center gap-3 rounded-2xl border border-[#EFE6D6] bg-white p-3">
+            <div className="min-w-[220px] flex-1 overflow-hidden">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-lg bg-pale-lavender px-2 py-1 text-[11px] font-extrabold text-deep-lavender">{song.id}</span>
                 {song.isHidden ? <span className="rounded-lg bg-[#F4ECE0] px-2 py-1 text-[11px] font-extrabold text-muted">숨김</span> : null}
@@ -1058,14 +1058,14 @@ function AdminInput({
   placeholder?: string;
 }) {
   return (
-    <label>
+    <label className="block min-w-0">
       <span className="text-sm font-extrabold text-ink">{label}</span>
       <input
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="mt-2 h-11 w-full rounded-2xl border border-[#E7DEF7] bg-white px-3 text-sm font-semibold text-ink outline-none focus:border-deep-lavender"
+        className="mt-2 h-11 min-w-0 w-full overflow-hidden text-ellipsis rounded-2xl border border-[#E7DEF7] bg-white px-3 text-sm font-semibold text-ink outline-none focus:border-deep-lavender"
       />
     </label>
   );
