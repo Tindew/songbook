@@ -111,6 +111,7 @@ export function AdminConsole() {
   const [songForm, setSongForm] = useState<SongForm>(emptySongForm);
   const [settingsForm, setSettingsForm] = useState<SiteSettingsForm>(settingsToForm());
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [songModalOpen, setSongModalOpen] = useState(false);
   const [newAdminId, setNewAdminId] = useState("");
   const [newAdminName, setNewAdminName] = useState("");
   const [youtubeCandidates, setYoutubeCandidates] = useState<YoutubeCandidate[]>([]);
@@ -198,6 +199,13 @@ export function AdminConsole() {
     return () => window.clearTimeout(timer);
   }, [configured, refreshData, session]);
 
+  useEffect(() => {
+    document.body.style.overflow = songModalOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [songModalOpen]);
+
   const pendingRequests = useMemo(() => requests.filter((request) => request.status === "pending"), [requests]);
 
   async function handleGoogleLogin() {
@@ -235,6 +243,7 @@ export function AdminConsole() {
     setEditingId(null);
     setSongForm({ ...emptySongForm, id: nextSongId(songs) });
     setYoutubeCandidates([]);
+    setSongModalOpen(true);
   }
 
   function startEdit(song: Song) {
@@ -257,6 +266,13 @@ export function AdminConsole() {
     });
     setYoutubeCandidates([]);
     setActiveTab("songs");
+    setSongModalOpen(true);
+  }
+
+  function closeSongEditor() {
+    setSongModalOpen(false);
+    setEditingId(null);
+    setYoutubeCandidates([]);
   }
 
   async function searchYoutubeCandidates() {
@@ -310,6 +326,8 @@ export function AdminConsole() {
       if (!configured) saveSongs([song, ...songs.filter((item) => item.id !== song.id)]);
       setSongForm({ ...emptySongForm, id: nextSongId([song, ...songs]) });
       setEditingId(null);
+      setSongModalOpen(false);
+      setYoutubeCandidates([]);
       setMessage("노래를 저장했습니다.");
     } catch {
       setMessage("노래 저장에 실패했습니다. 권한과 Firestore 규칙을 확인해주세요.");
@@ -559,21 +577,25 @@ export function AdminConsole() {
       </div>
 
       {activeTab === "songs" ? (
-        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-          <SongEditor
-            form={songForm}
-            editingId={editingId}
-            busy={busy}
-            onSubmit={saveSong}
-            onChange={(patch) => setSongForm((prev) => ({ ...prev, ...patch }))}
-            onNew={startCreate}
-            candidates={youtubeCandidates}
-            searching={youtubeSearching}
-            onSearchYoutube={() => void searchYoutubeCandidates()}
-            onSelectYoutube={selectYoutubeCandidate}
-          />
-          <SongTable songs={songs} onEdit={startEdit} onToggleHidden={toggleHidden} onDelete={removeSong} />
-        </div>
+        <>
+          <SongTable songs={songs} onAdd={startCreate} onEdit={startEdit} onToggleHidden={toggleHidden} onDelete={removeSong} />
+          {songModalOpen ? (
+            <SongEditorModal onClose={closeSongEditor}>
+              <SongEditor
+                form={songForm}
+                editingId={editingId}
+                busy={busy}
+                onSubmit={saveSong}
+                onChange={(patch) => setSongForm((prev) => ({ ...prev, ...patch }))}
+                onClose={closeSongEditor}
+                candidates={youtubeCandidates}
+                searching={youtubeSearching}
+                onSearchYoutube={() => void searchYoutubeCandidates()}
+                onSelectYoutube={selectYoutubeCandidate}
+              />
+            </SongEditorModal>
+          ) : null}
+        </>
       ) : activeTab === "requests" ? (
         <RequestTable requests={requests} busy={busy} onApprove={approveRequest} onReject={rejectRequest} />
       ) : activeTab === "admins" ? (
@@ -595,6 +617,16 @@ export function AdminConsole() {
         />
       )}
     </AdminShell>
+  );
+}
+
+function SongEditorModal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div role="presentation" onMouseDown={onClose} className="fixed inset-0 z-50 grid place-items-center bg-ink/35 p-4 backdrop-blur-sm">
+      <div role="presentation" onMouseDown={(event) => event.stopPropagation()} className="w-full">
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -634,7 +666,7 @@ function SongEditor({
   searching,
   onSubmit,
   onChange,
-  onNew,
+  onClose,
   onSearchYoutube,
   onSelectYoutube,
 }: {
@@ -645,7 +677,7 @@ function SongEditor({
   searching: boolean;
   onSubmit: (event: FormEvent) => void;
   onChange: (patch: Partial<SongForm>) => void;
-  onNew: () => void;
+  onClose: () => void;
   onSearchYoutube: () => void;
   onSelectYoutube: (candidate: YoutubeCandidate) => void;
 }) {
@@ -653,15 +685,19 @@ function SongEditor({
   const previewUrl = form.thumbnailUrl || youtubeThumbnailUrl(videoId);
 
   return (
-    <form onSubmit={onSubmit} className="min-w-0 rounded-[24px] border border-white/70 bg-white/80 p-5 shadow-card">
+    <form
+      onSubmit={onSubmit}
+      className="mx-auto max-h-[min(820px,calc(100vh-32px))] w-full max-w-2xl min-w-0 overflow-y-auto rounded-[24px] border border-white/70 bg-white/95 p-5 shadow-soft"
+    >
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-lg font-extrabold text-ink">{editingId ? "노래 수정" : "노래 추가"}</h3>
         <button
           type="button"
-          onClick={onNew}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-[#E7DEF7] bg-white px-3 text-xs font-extrabold text-[#4a3f6b]"
+          onClick={onClose}
+          className="grid h-10 w-10 place-items-center rounded-2xl border border-[#E7DEF7] bg-white text-[#4a3f6b]"
+          aria-label="닫기"
         >
-          <Plus className="h-4 w-4" />새 곡
+          <X className="h-4 w-4" />
         </button>
       </div>
       <div className="mt-5 grid gap-4">
@@ -794,34 +830,52 @@ function SongEditor({
 
 function SongTable({
   songs,
+  onAdd,
   onEdit,
   onToggleHidden,
   onDelete,
 }: {
   songs: Song[];
+  onAdd: () => void;
   onEdit: (song: Song) => void;
   onToggleHidden: (song: Song) => void;
   onDelete: (song: Song) => void;
 }) {
   return (
-    <section className="min-w-0 rounded-[24px] border border-white/70 bg-white/80 p-5 shadow-card">
-      <h3 className="text-lg font-extrabold text-ink">등록된 노래</h3>
+    <section className="mx-auto mt-6 w-full max-w-4xl min-w-0 rounded-[24px] border border-white/70 bg-white/80 p-5 shadow-card">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-lg font-extrabold text-ink">등록된 노래</h3>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-deep-lavender px-4 text-xs font-extrabold text-white shadow-[0_8px_18px_rgba(123,97,255,.24)]"
+        >
+          <Plus className="h-4 w-4" />
+          노래 추가
+        </button>
+      </div>
       <div className="mt-4 space-y-3">
-        {songs.map((song) => (
-          <div key={song.id} className="flex min-w-0 flex-wrap items-center gap-3 rounded-2xl border border-[#EFE6D6] bg-white p-3">
-            <div className="min-w-[220px] flex-1 overflow-hidden">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-lg bg-pale-lavender px-2 py-1 text-[11px] font-extrabold text-deep-lavender">{song.id}</span>
-                {song.isHidden ? <span className="rounded-lg bg-[#F4ECE0] px-2 py-1 text-[11px] font-extrabold text-muted">숨김</span> : null}
+        {songs.length ? (
+          songs.map((song) => (
+            <div key={song.id} className="flex min-w-0 flex-wrap items-center gap-3 rounded-2xl border border-[#EFE6D6] bg-white p-3">
+              <div className="min-w-[220px] flex-1 overflow-hidden">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-lg bg-pale-lavender px-2 py-1 text-[11px] font-extrabold text-deep-lavender">{song.id}</span>
+                  {song.isHidden ? <span className="rounded-lg bg-[#F4ECE0] px-2 py-1 text-[11px] font-extrabold text-muted">숨김</span> : null}
+                </div>
+                <div className="mt-2 text-sm font-extrabold text-ink">{song.title}</div>
+                <div className="mt-1 truncate text-xs font-bold text-muted">{song.artist} · {song.tags.join(", ")}</div>
               </div>
-              <div className="mt-2 text-sm font-extrabold text-ink">{song.title}</div>
-              <div className="mt-1 text-xs font-bold text-muted">{song.artist} · {song.tags.join(", ")}</div>
+              <RowAction label="수정" icon={<Pencil className="h-4 w-4" />} onClick={() => onEdit(song)} />
+              <RowAction label={song.isHidden ? "표시" : "숨김"} icon={<EyeOff className="h-4 w-4" />} onClick={() => onToggleHidden(song)} />
+              <RowAction label="삭제" icon={<Trash2 className="h-4 w-4" />} onClick={() => onDelete(song)} danger />
             </div>
-            <RowAction label="수정" icon={<Pencil className="h-4 w-4" />} onClick={() => onEdit(song)} />
-            <RowAction label={song.isHidden ? "표시" : "숨김"} icon={<EyeOff className="h-4 w-4" />} onClick={() => onToggleHidden(song)} />
-            <RowAction label="삭제" icon={<Trash2 className="h-4 w-4" />} onClick={() => onDelete(song)} danger />
+          ))
+        ) : (
+          <div className="rounded-2xl bg-[#F8F2E8] p-8 text-center text-sm font-bold text-muted">
+            등록된 노래가 아직 없습니다.
           </div>
-        ))}
+        )}
       </div>
     </section>
   );
