@@ -45,6 +45,10 @@ import { loadLikedIds, loadRequests, loadSongs, saveLikedIds, saveRequests, save
 import { extractYoutubeVideoId, youtubeThumbnailCandidates, youtubeThumbnailUrl } from "@/lib/songs/youtube";
 import type { AdminProfile, SiteSettings, Song, SongRequest, SortOption, ViewMode, YoutubeCandidate } from "@/types/song";
 
+// '로션픽'은 관리자만 지정할 수 있으므로 노래 추가 요청 폼에서는 제외한다.
+const RESERVED_ADMIN_TAG = "로션픽";
+const requestTagOptions = songTagOptions.filter((tag) => tag !== RESERVED_ADMIN_TAG);
+
 const gradientPairs = [
   ["#B9A7FF", "#7B61FF"],
   ["#F5A8C8", "#B9A7FF"],
@@ -458,7 +462,8 @@ export function SongbookApp() {
     }
 
     const id = `U${Date.now()}`;
-    const tags = form.tags.map((tag) => tag.trim()).filter(Boolean);
+    // '로션픽'은 관리자 전용 태그라 요청에서는 제외한다.
+    const tags = form.tags.map((tag) => tag.trim()).filter((tag) => tag && tag !== RESERVED_ADMIN_TAG);
     const finalTags = tags.length ? tags : ["요청곡"];
     const videoId = extractYoutubeVideoId(form.youtubeUrl);
     const createdAt = new Date().toISOString();
@@ -702,7 +707,7 @@ export function SongbookApp() {
       {requestOpen ? (
         <RequestModal
           form={form}
-          tagOptions={songTagOptions}
+          tagOptions={requestTagOptions}
           thumbState={thumbState}
           candidates={thumbCandidates}
           selectedThumb={selectedThumb}
