@@ -1,4 +1,3 @@
-import { seedSongs } from "@/data/seedSongs";
 import type { Song, SongRequest } from "@/types/song";
 
 const SONGS_KEY = "losionyom-songbook-songs";
@@ -6,15 +5,15 @@ const LIKES_KEY = "losionyom-songbook-favorites";
 const REQUESTS_KEY = "losionyom-songbook-requests";
 
 export function loadSongs() {
-  if (typeof window === "undefined") return seedSongs;
+  if (typeof window === "undefined") return [] as Song[];
 
   try {
     const raw = window.localStorage.getItem(SONGS_KEY);
-    if (!raw) return seedSongs;
+    if (!raw) return [];
     const parsed = JSON.parse(raw) as Song[];
-    return Array.isArray(parsed) && parsed.length ? parsed : seedSongs;
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return seedSongs;
+    return [];
   }
 }
 

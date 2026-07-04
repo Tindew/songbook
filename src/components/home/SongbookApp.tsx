@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { defaultTags, seedSongs } from "@/data/seedSongs";
+import { defaultTags } from "@/data/seedSongs";
 import {
   loadGoogleAdminSession,
   localAdminProfile,
@@ -80,7 +80,7 @@ const emptyForm: RequestForm = {
 };
 
 export function SongbookApp() {
-  const [songs, setSongs] = useState<Song[]>(seedSongs);
+  const [songs, setSongs] = useState<Song[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [requests, setRequests] = useState<SongRequest[]>([]);
   const [query, setQuery] = useState("");

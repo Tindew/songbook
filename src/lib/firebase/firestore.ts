@@ -12,7 +12,6 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { seedSongs } from "@/data/seedSongs";
 import type { AdminProfile, SiteSettings, Song, SongRequest } from "@/types/song";
 import { getFirebaseDb, hasFirebaseConfig } from "./client";
 
@@ -40,7 +39,7 @@ export async function fetchSongsFromFirestore() {
 
   const snapshot = await getDocs(query(collection(db, "songs"), orderBy("createdAt", "desc"), limit(500)));
   const songs = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as Song);
-  return songs.length ? songs : seedSongs;
+  return songs;
 }
 
 export async function saveSongToFirestore(song: Song) {
