@@ -237,7 +237,8 @@ export function SongbookApp() {
   );
 
   const detailSong = detailSongId ? songs.find((song) => song.id === detailSongId) : undefined;
-  const favoriteCount = likedIds.size;
+  // 대시보드는 내 좋아요가 아닌 사이트 전체 누적 좋아요 수를 보여준다.
+  const favoriteCount = songs.reduce((sum, song) => sum + song.likeCount, 0);
   const featuredCount = songs.filter((song) => song.isFeatured).length;
   const recentCount = Math.min(8, songs.length);
 
