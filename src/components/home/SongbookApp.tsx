@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BadgeCheck,
   Clipboard,
   Grid2X2,
   Heart,
@@ -19,7 +18,7 @@ import {
 } from "lucide-react";
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { defaultTags } from "@/data/seedSongs";
+import { defaultTags, songTagOptions } from "@/data/seedSongs";
 import {
   loadGoogleAdminSession,
   localAdminProfile,
@@ -32,11 +31,11 @@ import {
 import {
   createSongRequestInFirestore,
   defaultSiteSettings,
+  fetchAdminProfileByIdentity,
   fetchSiteSettings,
   fetchSongsFromFirestore,
   firebaseAvailable,
 } from "@/lib/firebase/firestore";
-import { fetchAdminProfile } from "@/lib/firebase/firestore";
 import { loginWithGoogle, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth";
 import { describeFirebaseError } from "@/lib/firebase/errors";
 import { filterAndSortSongs } from "@/lib/songs/filter";
@@ -64,7 +63,7 @@ const statusLabel: Record<Song["status"], string> = {
 type RequestForm = {
   title: string;
   artist: string;
-  tags: string;
+  tags: string[];
   youtubeUrl: string;
   nickname: string;
   reason: string;
@@ -73,7 +72,7 @@ type RequestForm = {
 const emptyForm: RequestForm = {
   title: "",
   artist: "",
-  tags: "",
+  tags: [],
   youtubeUrl: "",
   nickname: "",
   reason: "",
@@ -179,12 +178,11 @@ export function SongbookApp() {
 
     const googleId = adminSession.googleId;
     const firebaseUid = adminSession.firebaseUid;
+    const sessionEmail = adminSession.email;
     const timer = window.setTimeout(() => {
       async function verifyAdmin() {
         try {
-          const profile = firebaseUid
-            ? await fetchAdminProfile(firebaseUid)
-            : null;
+          const profile = await fetchAdminProfileByIdentity({ uid: firebaseUid, googleId, email: sessionEmail });
           setAdminProfile(profile ?? localAdminProfile(googleId));
         } catch {
           setAdminProfile(localAdminProfile(googleId));
@@ -219,7 +217,9 @@ export function SongbookApp() {
         setAdminSession(session);
         saveGoogleAdminSession(session);
 
-        const profile = (await fetchAdminProfile(session.firebaseUid ?? session.googleId)) ?? localAdminProfile(session.googleId);
+        const profile =
+          (await fetchAdminProfileByIdentity({ uid: session.firebaseUid, googleId: session.googleId, email: session.email })) ??
+          localAdminProfile(session.googleId);
         setAdminProfile(profile);
         showToast(profile ? "Google로 로그인했어요" : "로그인했지만 관리자 권한이 없습니다");
         return;
@@ -236,7 +236,7 @@ export function SongbookApp() {
     let profile = localAdminProfile(session.googleId);
     if (firebaseMode) {
       try {
-        profile = (await fetchAdminProfile(session.googleId)) ?? profile;
+        profile = (await fetchAdminProfileByIdentity({ uid: session.firebaseUid, googleId: session.googleId, email: session.email })) ?? profile;
       } catch {
         profile = localAdminProfile(session.googleId);
       }
@@ -325,46 +325,43 @@ export function SongbookApp() {
     window.setTimeout(() => setHighlightId(null), 1700);
   }
 
-  function updateForm(key: keyof RequestForm, value: string) {
+  function updateForm(key: "title" | "artist" | "youtubeUrl" | "nickname" | "reason", value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function findThumbnails() {
-    const title = form.title.trim() || "제목";
-    const artist = form.artist.trim() || "가수";
+  function toggleRequestTag(tag: string) {
+    setForm((prev) => ({
+      ...prev,
+      tags: prev.tags.includes(tag) ? prev.tags.filter((item) => item !== tag) : [...prev.tags, tag],
+    }));
+  }
+
+  async function findThumbnails() {
+    const title = form.title.trim();
+    const artist = form.artist.trim();
+
+    if (!title && !artist) {
+      showToast("곡명 또는 가수명을 입력한 뒤 썸네일을 찾아주세요.");
+      return;
+    }
+
     setThumbState("loading");
     setSelectedThumb(null);
     setThumbCandidates([]);
 
-    window.setTimeout(() => {
-      setThumbCandidates([
-        {
-          id: "official",
-          title: `[Official MV] ${artist} - ${title}`,
-          channelTitle: `${artist} 공식`,
-          confidence: 94,
-          official: true,
-          gradientSeed: `${title}-${artist}-1`,
-        },
-        {
-          id: "live",
-          title: `${title} Live Clip`,
-          channelTitle: "YOM MUSIC",
-          confidence: 82,
-          official: false,
-          gradientSeed: `${title}-${artist}-2`,
-        },
-        {
-          id: "audio",
-          title: `${artist} - ${title} Audio`,
-          channelTitle: "음악 아카이브",
-          confidence: 68,
-          official: false,
-          gradientSeed: `${title}-${artist}-3`,
-        },
-      ]);
+    try {
+      const response = await fetch("/api/youtube/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, artist }),
+      });
+      const data = (await response.json()) as { candidates?: YoutubeCandidate[] };
+      setThumbCandidates(data.candidates ?? []);
       setThumbState("done");
-    }, 850);
+    } catch {
+      setThumbState("idle");
+      showToast("유튜브 썸네일 후보를 불러오지 못했습니다.");
+    }
   }
 
   async function submitRequest(event: FormEvent) {
@@ -379,10 +376,7 @@ export function SongbookApp() {
     }
 
     const id = `U${Date.now()}`;
-    const tags = form.tags
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean);
+    const tags = form.tags.map((tag) => tag.trim()).filter(Boolean);
     const finalTags = tags.length ? tags : ["요청곡"];
     const videoId = extractYoutubeVideoId(form.youtubeUrl);
     const createdAt = new Date().toISOString();
@@ -457,7 +451,6 @@ export function SongbookApp() {
           siteTitle={siteSettings.siteTitle}
           adminProfile={adminProfile}
           onReset={resetAll}
-          onRequest={openRequestModal}
           onGoogleLogin={handleGoogleLogin}
           onLogout={handleGoogleLogout}
         />
@@ -472,8 +465,6 @@ export function SongbookApp() {
           onRandom={randomPick}
           onRequest={openRequestModal}
         />
-
-        <FeatureStrip />
 
         {siteSettings.announcement ? (
           <section className="mt-5 rounded-[22px] border border-[#E7D6BE] bg-white/75 p-4 text-sm font-bold leading-6 text-[#7A5A2E] shadow-card">
@@ -542,8 +533,8 @@ export function SongbookApp() {
             </select>
           </div>
 
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-            {defaultTags.map((tag, index) => (
+          <div className="mt-4 flex flex-wrap gap-2 pb-1">
+            {defaultTags.map((tag) => (
               <button
                 key={tag}
                 type="button"
@@ -553,7 +544,6 @@ export function SongbookApp() {
                     ? "border-deep-lavender bg-deep-lavender text-white shadow-[0_8px_18px_rgba(123,97,255,.26)]"
                     : "border-[#EBE1D2] bg-white text-[#5b5368]"
                 }`}
-                style={{ transform: `rotate(${(index % 5) - 2}deg)` }}
               >
                 {tag}
               </button>
@@ -613,10 +603,6 @@ export function SongbookApp() {
             노래 추가 요청
           </button>
         </section>
-
-        <footer className="py-12 text-center text-xs font-semibold text-muted">
-          {siteSettings.siteTitle} · 검색, 좋아요, 랜덤, 요청까지 촉촉하게 준비 중
-        </footer>
       </div>
 
       {detailSong ? (
@@ -632,11 +618,13 @@ export function SongbookApp() {
       {requestOpen ? (
         <RequestModal
           form={form}
+          tagOptions={songTagOptions}
           thumbState={thumbState}
           candidates={thumbCandidates}
           selectedThumb={selectedThumb}
           onClose={() => setRequestOpen(false)}
           onChange={updateForm}
+          onToggleTag={toggleRequestTag}
           onFindThumbnails={findThumbnails}
           onSelectThumbnail={setSelectedThumb}
           onSubmit={submitRequest}
@@ -656,14 +644,12 @@ function NavBar({
   siteTitle,
   adminProfile,
   onReset,
-  onRequest,
   onGoogleLogin,
   onLogout,
 }: {
   siteTitle: string;
   adminProfile: AdminProfile | null;
   onReset: () => void;
-  onRequest: () => void;
   onGoogleLogin: () => void;
   onLogout: () => void;
 }) {
@@ -675,14 +661,6 @@ function NavBar({
         </span>
         <span className="text-[17px] font-extrabold text-ink">{siteTitle}</span>
       </button>
-      <div className="ml-auto hidden items-center gap-2 text-sm font-bold text-muted md:flex">
-        <a className="rounded-full px-3 py-2 hover:bg-white/70" href="#songbook">
-          노래책
-        </a>
-        <button type="button" onClick={onRequest} className="rounded-full px-3 py-2 hover:bg-white/70">
-          요청하기
-        </button>
-      </div>
       {adminProfile ? (
         <div className="ml-auto flex items-center gap-2 md:ml-0">
           <Link
@@ -711,14 +689,6 @@ function NavBar({
           >
             G
             로그인
-          </button>
-          <button
-            type="button"
-            onClick={onRequest}
-            className="focus-ring inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-sm font-extrabold text-deep-lavender shadow-card"
-          >
-            <Plus className="h-4 w-4" />
-            요청
           </button>
         </div>
       )}
@@ -754,8 +724,6 @@ function HeroSection({
         </span>
         <h1 className="mt-6 max-w-2xl text-[42px] font-extrabold leading-[1.06] text-ink md:text-[58px]">
           {settings.heroTitle}
-          <br />
-          {settings.siteTitle}에서 골라봐요.
         </h1>
         <p className="mt-6 max-w-[520px] text-base font-medium leading-7 text-muted">
           {settings.heroSubtitle}
@@ -832,28 +800,6 @@ function Stat({ value, label, tone }: { value: number; label: string; tone: stri
       <div className={`text-2xl font-extrabold ${tone}`}>{value}</div>
       <div className="mt-1 text-[11px] font-bold text-muted">{label}</div>
     </div>
-  );
-}
-
-function FeatureStrip() {
-  const features = [
-    { icon: Search, title: "빠른 검색", desc: "곡명, 가수, 태그, 초성으로 찾기", bg: "bg-pale-lavender text-deep-lavender" },
-    { icon: Heart, title: "좋아요 저장", desc: "자주 듣고 싶은 곡만 따로 보기", bg: "bg-[#FDE7F0] text-[#C85C8E]" },
-    { icon: BadgeCheck, title: "썸네일 후보", desc: "요청 단계에서 후보를 고르는 구조", bg: "bg-[#F3E9D8] text-[#9A7B3F]" },
-  ];
-
-  return (
-    <section className="grid gap-4 md:grid-cols-3">
-      {features.map((feature) => (
-        <div key={feature.title} className="lift rounded-[22px] border border-[#EFE6D6] bg-white/70 p-5 shadow-card">
-          <div className={`grid h-11 w-11 place-items-center rounded-2xl ${feature.bg}`}>
-            <feature.icon className="h-5 w-5" />
-          </div>
-          <h2 className="mt-4 text-lg font-extrabold text-ink">{feature.title}</h2>
-          <p className="mt-2 text-sm font-medium leading-6 text-muted">{feature.desc}</p>
-        </div>
-      ))}
-    </section>
   );
 }
 
@@ -1169,21 +1115,25 @@ function DetailModal({
 
 function RequestModal({
   form,
+  tagOptions,
   thumbState,
   candidates,
   selectedThumb,
   onClose,
   onChange,
+  onToggleTag,
   onFindThumbnails,
   onSelectThumbnail,
   onSubmit,
 }: {
   form: RequestForm;
+  tagOptions: readonly string[];
   thumbState: "idle" | "loading" | "done";
   candidates: YoutubeCandidate[];
   selectedThumb: YoutubeCandidate | null;
   onClose: () => void;
-  onChange: (key: keyof RequestForm, value: string) => void;
+  onChange: (key: "title" | "artist" | "youtubeUrl" | "nickname" | "reason", value: string) => void;
+  onToggleTag: (tag: string) => void;
   onFindThumbnails: () => void;
   onSelectThumbnail: (candidate: YoutubeCandidate) => void;
   onSubmit: (event: FormEvent) => void;
@@ -1207,7 +1157,9 @@ function RequestModal({
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <Field label="곡명" value={form.title} onChange={(value) => onChange("title", value)} required />
           <Field label="가수" value={form.artist} onChange={(value) => onChange("artist", value)} required />
-          <Field label="태그" value={form.tags} onChange={(value) => onChange("tags", value)} placeholder="K-POP, 발라드" />
+          <div className="sm:col-span-2">
+            <TagSelector label="태그" options={tagOptions} selected={form.tags} onToggle={onToggleTag} />
+          </div>
           <Field label="닉네임" value={form.nickname} onChange={(value) => onChange("nickname", value)} />
           <div className="sm:col-span-2">
             <Field
@@ -1233,7 +1185,7 @@ function RequestModal({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-extrabold text-ink">유튜브 썸네일 후보</h3>
-              <p className="mt-1 text-xs font-semibold text-muted">현재는 샘플 후보이며, 9차에서 실제 YouTube API로 연결합니다.</p>
+              <p className="mt-1 text-xs font-semibold text-muted">곡명과 가수명을 기준으로 YouTube 후보를 불러옵니다.</p>
             </div>
             <button
               type="button"
@@ -1335,6 +1287,43 @@ function Field({
         className="focus-ring mt-2 h-12 w-full rounded-2xl border border-[#E7DEF7] bg-white px-4 text-sm font-semibold text-ink outline-none"
       />
     </label>
+  );
+}
+
+function TagSelector({
+  label,
+  options,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  options: readonly string[];
+  selected: string[];
+  onToggle: (tag: string) => void;
+}) {
+  return (
+    <div>
+      <span className="text-sm font-extrabold text-ink">{label}</span>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {options.map((tag) => {
+          const active = selected.includes(tag);
+          return (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => onToggle(tag)}
+              className={`focus-ring rounded-xl border px-3 py-2 text-sm font-bold transition ${
+                active
+                  ? "border-deep-lavender bg-deep-lavender text-white shadow-[0_8px_18px_rgba(123,97,255,.20)]"
+                  : "border-[#E7DEF7] bg-white text-[#4a3f6b]"
+              }`}
+            >
+              {tag}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

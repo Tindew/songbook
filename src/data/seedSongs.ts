@@ -1,16 +1,3 @@
-export const defaultTags = [
-  "전체",
-  "K-POP",
-  "J-POP",
-  "POP",
-  "애니메이션",
-  "발라드",
-  "OST",
-  "락/밴드",
-  "인디",
-  "댄스",
-  "로션픽",
-  "신나는",
-  "잔잔한",
-  "고음주의",
-];
+export const songTagOptions = ["K-POP", "J-POP", "POP", "로션픽"] as const;
+
+export const defaultTags = ["전체", ...songTagOptions];

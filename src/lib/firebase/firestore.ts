@@ -7,10 +7,13 @@ import {
   getDocs,
   limit,
   orderBy,
+  or,
+  type QueryFilterConstraint,
   query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import type { AdminProfile, SiteSettings, Song, SongRequest } from "@/types/song";
 import { getFirebaseDb, hasFirebaseConfig } from "./client";
@@ -144,6 +147,29 @@ export async function fetchAdminProfile(uid: string) {
   const snapshot = await getDoc(doc(db, "admins", uid));
   if (!snapshot.exists()) return null;
   return { uid, ...snapshot.data() } as AdminProfile;
+}
+
+export async function fetchAdminProfileByIdentity(identity: { uid?: string | null; googleId?: string | null; email?: string | null }) {
+  const db = getFirebaseDb();
+  if (!db) return null;
+
+  const directId = identity.uid?.trim();
+  const normalizedEmail = identity.email?.trim().toLowerCase();
+  if (directId) {
+    const direct = await fetchAdminProfile(directId);
+    if (direct) return direct;
+  }
+
+  const filters: QueryFilterConstraint[] = [];
+  if (normalizedEmail) filters.push(where("email", "==", normalizedEmail));
+  if (identity.googleId?.trim()) filters.push(where("googleId", "==", identity.googleId.trim()));
+
+  if (!filters.length) return null;
+
+  const snapshot = await getDocs(query(collection(db, "admins"), or(...filters), limit(1)));
+  if (!snapshot.docs.length) return null;
+  const matched = snapshot.docs[0];
+  return { uid: matched.id, ...matched.data() } as AdminProfile;
 }
 
 export async function saveAdminProfile(profile: AdminProfile) {

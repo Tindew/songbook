@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { songTagOptions } from "@/data/seedSongs";
 import {
   loadLocalAdminIds,
   loadGoogleAdminSession,
@@ -33,7 +34,7 @@ import { hasFirebaseConfig } from "@/lib/firebase/client";
 import { describeFirebaseError } from "@/lib/firebase/errors";
 import {
   deleteSongFromFirestore,
-  fetchAdminProfile,
+  fetchAdminProfileByIdentity,
   fetchAdminProfiles,
   fetchSongRequestsFromFirestore,
   fetchSongsFromFirestore,
@@ -53,8 +54,7 @@ type SongForm = {
   title: string;
   artist: string;
   aliases: string;
-  tags: string;
-  genres: string;
+  tags: string[];
   status: SongStatus;
   difficulty: "1" | "2" | "3";
   memo: string;
@@ -79,8 +79,7 @@ const emptySongForm: SongForm = {
   title: "",
   artist: "",
   aliases: "",
-  tags: "K-POP",
-  genres: "K-POP",
+  tags: ["K-POP"],
   status: "available",
   difficulty: "2",
   memo: "",
@@ -175,11 +174,14 @@ export function AdminConsole() {
 
     const googleId = session.googleId;
     const firebaseUid = session.firebaseUid;
+    const sessionEmail = session.email;
     const timer = window.setTimeout(() => {
       async function loadAdmin() {
         setAdminLoading(true);
         try {
-          const profile = configured && firebaseUid ? await fetchAdminProfile(firebaseUid) : null;
+          const profile = configured
+            ? await fetchAdminProfileByIdentity({ uid: firebaseUid, googleId, email: sessionEmail })
+            : null;
           const resolvedProfile = profile ?? localAdminProfile(googleId);
           setAdmin(resolvedProfile);
           if (resolvedProfile) await refreshData();
@@ -253,8 +255,7 @@ export function AdminConsole() {
       title: song.title,
       artist: song.artist,
       aliases: song.aliases.join(", "),
-      tags: song.tags.join(", "),
-      genres: song.genres.join(", "),
+      tags: song.tags,
       status: song.status,
       difficulty: String(song.difficulty) as SongForm["difficulty"],
       memo: song.memo ?? "",
@@ -273,6 +274,13 @@ export function AdminConsole() {
     setSongModalOpen(false);
     setEditingId(null);
     setYoutubeCandidates([]);
+  }
+
+  function toggleSongTag(tag: string) {
+    setSongForm((prev) => ({
+      ...prev,
+      tags: prev.tags.includes(tag) ? prev.tags.filter((item) => item !== tag) : [...prev.tags, tag],
+    }));
   }
 
   async function searchYoutubeCandidates() {
@@ -413,9 +421,9 @@ export function AdminConsole() {
 
   async function addAdmin(event: FormEvent) {
     event.preventDefault();
-    const adminId = newAdminId.trim();
+    const adminId = newAdminId.trim().toLowerCase();
     if (!adminId) {
-      setMessage("Firebase UID 또는 Google ID를 입력해주세요.");
+      setMessage("Google 이메일 주소를 입력해주세요.");
       return;
     }
 
@@ -424,7 +432,7 @@ export function AdminConsole() {
 
     const profile: AdminProfile = {
       uid: adminId,
-      email: `${adminId}@google.local`,
+      email: adminId,
       role: "admin",
       provider: "google",
       googleId: adminId,
@@ -531,12 +539,7 @@ export function AdminConsole() {
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-bold text-deep-lavender">{admin.email}</p>
-          <h2 className="text-2xl font-extrabold text-ink">노래책 운영 콘솔</h2>
-          {session ? (
-            <p className="mt-1 text-xs font-bold text-muted">
-              Firebase UID: {session.firebaseUid || "로컬 모드"} · Google ID: {session.googleId}
-            </p>
-          ) : null}
+          <h2 className="text-2xl font-extrabold text-ink">노래책 설정</h2>
           {!configured ? <p className="mt-1 text-xs font-bold text-warning">Firebase 미설정 상태라 로컬 저장으로 동작합니다.</p> : null}
         </div>
         <div className="flex gap-2">
@@ -587,6 +590,7 @@ export function AdminConsole() {
                 busy={busy}
                 onSubmit={saveSong}
                 onChange={(patch) => setSongForm((prev) => ({ ...prev, ...patch }))}
+                onToggleTag={toggleSongTag}
                 onClose={closeSongEditor}
                 candidates={youtubeCandidates}
                 searching={youtubeSearching}
@@ -666,6 +670,7 @@ function SongEditor({
   searching,
   onSubmit,
   onChange,
+  onToggleTag,
   onClose,
   onSearchYoutube,
   onSelectYoutube,
@@ -677,6 +682,7 @@ function SongEditor({
   searching: boolean;
   onSubmit: (event: FormEvent) => void;
   onChange: (patch: Partial<SongForm>) => void;
+  onToggleTag: (tag: string) => void;
   onClose: () => void;
   onSearchYoutube: () => void;
   onSelectYoutube: (candidate: YoutubeCandidate) => void;
@@ -705,8 +711,7 @@ function SongEditor({
         <AdminInput label="곡명" value={form.title} onChange={(value) => onChange({ title: value })} />
         <AdminInput label="가수" value={form.artist} onChange={(value) => onChange({ artist: value })} />
         <AdminInput label="별칭" value={form.aliases} onChange={(value) => onChange({ aliases: value })} placeholder="쉼표로 구분" />
-        <AdminInput label="태그" value={form.tags} onChange={(value) => onChange({ tags: value })} placeholder="쉼표로 구분" />
-        <AdminInput label="장르" value={form.genres} onChange={(value) => onChange({ genres: value })} placeholder="쉼표로 구분" />
+        <TagSelector label="태그" options={songTagOptions} selected={form.tags} onToggle={onToggleTag} />
         <div className="grid grid-cols-2 gap-3">
           <label>
             <span className="text-sm font-extrabold text-ink">상태</span>
@@ -954,12 +959,9 @@ function AdminManager({
     <section className="mt-6 grid gap-6 lg:grid-cols-[420px_1fr]">
       <form onSubmit={onSubmit} className="rounded-[24px] border border-white/70 bg-white/80 p-5 shadow-card">
         <h3 className="text-lg font-extrabold text-ink">관리자 추가</h3>
-        <p className="mt-2 text-sm font-medium leading-6 text-muted">
-          새 관리자가 Google로 한 번 로그인한 뒤 표시되는 Firebase UID를 추가합니다. 해당 계정으로 로그인하면 메인
-          화면에 설정 버튼이 표시됩니다.
-        </p>
+        <p className="mt-2 text-sm font-medium leading-6 text-muted">관리자로 추가할 Google 이메일 주소를 입력해주세요.</p>
         <div className="mt-5 space-y-4">
-          <AdminInput label="Firebase UID 또는 Google ID" value={newAdminId} onChange={onIdChange} placeholder="설정 화면에 표시된 UID/ID" />
+          <AdminInput label="Google 이메일" value={newAdminId} onChange={onIdChange} placeholder="example@gmail.com" />
           <AdminInput label="표시 이름" value={newAdminName} onChange={onNameChange} placeholder="예: 운영자" />
         </div>
         <button
@@ -987,7 +989,7 @@ function AdminManager({
                   </span>
                 </div>
                 <div className="mt-2 text-sm font-extrabold text-ink">{admin.displayName || admin.uid}</div>
-                <div className="mt-1 text-xs font-bold text-muted">기준 아이디: {admin.googleId || admin.uid}</div>
+                <div className="mt-1 text-xs font-bold text-muted">Google 이메일: {admin.email || admin.googleId || admin.uid}</div>
               </div>
             ))
           ) : (
@@ -1125,6 +1127,43 @@ function AdminInput({
   );
 }
 
+function TagSelector({
+  label,
+  options,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  options: readonly string[];
+  selected: string[];
+  onToggle: (tag: string) => void;
+}) {
+  return (
+    <div>
+      <span className="text-sm font-extrabold text-ink">{label}</span>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {options.map((tag) => {
+          const active = selected.includes(tag);
+          return (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => onToggle(tag)}
+              className={`rounded-xl border px-3 py-2 text-sm font-bold transition ${
+                active
+                  ? "border-deep-lavender bg-deep-lavender text-white shadow-[0_8px_18px_rgba(123,97,255,.20)]"
+                  : "border-[#E7DEF7] bg-white text-[#4a3f6b]"
+              }`}
+            >
+              {tag}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function TabButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
   return (
     <button
@@ -1182,8 +1221,8 @@ function buildSongFromForm(form: SongForm, existing?: Song): Song {
     title: form.title.trim(),
     artist: form.artist.trim(),
     aliases: splitCsv(form.aliases),
-    tags: splitCsv(form.tags),
-    genres: splitCsv(form.genres),
+    tags: form.tags,
+    genres: form.tags,
     status: form.status,
     difficulty: Number(form.difficulty) as Song["difficulty"],
     memo: form.memo.trim(),

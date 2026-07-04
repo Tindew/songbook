@@ -16,7 +16,7 @@ export function filterAndSortSongs(input: FilterInput) {
   const filtered = input.songs.filter((song) => {
     if (song.isHidden) return false;
     if (input.likedOnly && !input.likedIds.has(song.id)) return false;
-    if (input.activeTag !== "전체" && !song.tags.includes(input.activeTag) && !song.genres.includes(input.activeTag)) {
+    if (input.activeTag !== "전체" && !song.tags.includes(input.activeTag)) {
       return false;
     }
 
@@ -28,7 +28,6 @@ export function filterAndSortSongs(input: FilterInput) {
         song.artist,
         ...song.aliases,
         ...song.tags,
-        ...song.genres,
         getChosung(`${song.title} ${song.artist}`),
       ].join(" "),
     );
