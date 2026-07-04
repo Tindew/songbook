@@ -844,6 +844,8 @@ function SongCard({
   onCopy: (song: Song, event?: MouseEvent) => void;
   onOpen: () => void;
 }) {
+  const badge = thumbnailBadge(song);
+
   return (
     <article
       id={`song-${song.id}`}
@@ -866,9 +868,11 @@ function SongCard({
         >
           <Heart className="h-4 w-4" fill={liked ? "currentColor" : "none"} />
         </button>
-        <span className="absolute bottom-3 left-3 rounded-xl bg-white/90 px-3 py-1.5 text-[11px] font-extrabold text-deep-lavender backdrop-blur">
-          {thumbnailBadge(song)}
-        </span>
+        {badge ? (
+          <span className="absolute bottom-3 left-3 rounded-xl bg-white/90 px-3 py-1.5 text-[11px] font-extrabold text-deep-lavender backdrop-blur">
+            {badge}
+          </span>
+        ) : null}
       </div>
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
@@ -1142,7 +1146,7 @@ function RequestModal({
     <ModalShell onClose={onClose}>
       <form
         onSubmit={onSubmit}
-        className="animate-modal max-h-[min(760px,calc(100vh-32px))] w-full max-w-2xl overflow-y-auto rounded-[28px] bg-[#FFFDFA] p-6 shadow-soft"
+        className="animate-modal max-h-[min(820px,calc(100vh-32px))] w-full max-w-4xl overflow-x-hidden overflow-y-auto rounded-[28px] bg-[#FFFDFA] p-6 shadow-soft"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -1342,7 +1346,7 @@ function ModalShell({ children, onClose }: { children: React.ReactNode; onClose:
 }
 
 function thumbnailBadge(song: Song) {
-  if (song.thumbnailSource === "manual") return "직접 등록";
+  if (song.thumbnailSource === "manual") return null;
   if (song.thumbnailSource === "pending" || !song.thumbnailConfidence) return "썸네일 대기";
   if (song.thumbnailSource === "default") return "기본 썸네일";
   return `공식 후보 ${song.thumbnailConfidence}%`;

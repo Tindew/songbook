@@ -102,20 +102,29 @@ export async function fetchSongRequestsFromFirestore() {
   if (!db) return null;
 
   const snapshot = await getDocs(query(collection(db, "songRequests"), orderBy("createdAt", "desc"), limit(500)));
-  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as SongRequest);
+  return snapshot.docs.map((item) => ({ ...item.data(), id: item.id }) as SongRequest);
 }
 
 export async function updateSongRequestInFirestore(requestId: string, patch: Partial<SongRequest>) {
   const db = getFirebaseDb();
   if (!db) throw new Error("Firebase 설정이 필요합니다.");
 
-  await updateDoc(
-    doc(db, "songRequests", requestId),
-    cleanRecord({
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    }),
-  );
+  const payload = cleanRecord({
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  });
+
+  try {
+    await updateDoc(doc(db, "songRequests", requestId), payload);
+    return;
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code !== "not-found") throw error;
+  }
+
+  const snapshot = await getDocs(query(collection(db, "songRequests"), where("id", "==", requestId), limit(1)));
+  if (!snapshot.docs.length) throw new Error("Song request document not found");
+  await updateDoc(snapshot.docs[0].ref, payload);
 }
 
 export async function fetchSiteSettings() {

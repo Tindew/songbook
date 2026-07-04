@@ -693,7 +693,7 @@ function SongEditor({
   return (
     <form
       onSubmit={onSubmit}
-      className="mx-auto max-h-[min(820px,calc(100vh-32px))] w-full max-w-2xl min-w-0 overflow-y-auto rounded-[24px] border border-white/70 bg-white/95 p-5 shadow-soft"
+      className="mx-auto max-h-[min(860px,calc(100vh-32px))] w-full max-w-5xl min-w-0 overflow-x-hidden overflow-y-auto rounded-[24px] border border-white/70 bg-white/95 p-5 shadow-soft md:p-6"
     >
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-lg font-extrabold text-ink">{editingId ? "노래 수정" : "노래 추가"}</h3>
