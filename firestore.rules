@@ -35,6 +35,17 @@ service cloud.firestore {
         && data.status in ['pending', 'approved', 'rejected'];
     }
 
+    function likeCountUpdate() {
+      return isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount', 'updatedAt'])
+        && request.resource.data.likeCount is number
+        && request.resource.data.likeCount >= 0
+        && (
+          request.resource.data.likeCount == resource.data.likeCount + 1
+          || request.resource.data.likeCount == resource.data.likeCount - 1
+        );
+    }
+
     function validSiteSettings(data) {
       return data.keys().hasAll(['siteTitle', 'heroTitle', 'heroSubtitle', 'requestEnabled', 'copyCommandEnabled'])
         && data.siteTitle is string
@@ -46,8 +57,16 @@ service cloud.firestore {
 
     match /songs/{songId} {
       allow read: if true;
-      allow create, update: if isAdmin() && validSong(request.resource.data);
+      allow create: if isAdmin() && validSong(request.resource.data);
+      // 관리자는 전체 수정, 로그인 유저는 좋아요 수만 ±1 변경 가능.
+      allow update: if (isAdmin() && validSong(request.resource.data)) || likeCountUpdate();
       allow delete: if isAdmin();
+    }
+
+    match /userLikes/{likeId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     match /songRequests/{requestId} {

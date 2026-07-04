@@ -37,7 +37,9 @@ import {
   firebaseAvailable,
 } from "@/lib/firebase/firestore";
 import { loginWithGoogle, logoutAdmin, subscribeAuth } from "@/lib/firebase/auth";
+import { fetchUserLikedSongIds, setSongLike } from "@/lib/firebase/likes";
 import { describeFirebaseError } from "@/lib/firebase/errors";
+import { buildRequestCommand } from "@/lib/songs/command";
 import { filterAndSortSongs } from "@/lib/songs/filter";
 import { loadLikedIds, loadRequests, loadSongs, saveLikedIds, saveRequests, saveSongs } from "@/lib/songs/storage";
 import { extractYoutubeVideoId, youtubeThumbnailCandidates, youtubeThumbnailUrl } from "@/lib/songs/youtube";
@@ -85,7 +87,7 @@ export function SongbookApp() {
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState("전체");
   const [likedOnly, setLikedOnly] = useState(false);
-  const [sort, setSort] = useState<SortOption>("recent");
+  const [sort, setSort] = useState<SortOption>("likes");
   const [viewMode, setViewMode] = useState<ViewMode>("card");
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [detailSongId, setDetailSongId] = useState<string | null>(null);
@@ -156,9 +158,39 @@ export function SongbookApp() {
   }, [firebaseMode, hydrated, songs]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    // Firebase 모드에서는 좋아요를 유저 계정(Firestore)에 저장하므로 로컬 저장을 건너뛴다.
+    if (!hydrated || firebaseMode) return;
     saveLikedIds(likedIds);
-  }, [hydrated, likedIds]);
+  }, [firebaseMode, hydrated, likedIds]);
+
+  useEffect(() => {
+    if (!firebaseMode) return;
+
+    const uid = adminSession?.firebaseUid;
+    let cancelled = false;
+
+    if (!uid) {
+      const timer = window.setTimeout(() => {
+        if (!cancelled) setLikedIds(new Set());
+      }, 0);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    }
+
+    void fetchUserLikedSongIds(uid)
+      .then((ids) => {
+        if (!cancelled) setLikedIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setLikedIds(new Set());
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [firebaseMode, adminSession?.firebaseUid]);
 
   useEffect(() => {
     document.body.style.overflow = requestOpen || detailSongId ? "hidden" : "";
@@ -221,7 +253,7 @@ export function SongbookApp() {
           (await fetchAdminProfileByIdentity({ uid: session.firebaseUid, googleId: session.googleId, email: session.email })) ??
           localAdminProfile(session.googleId);
         setAdminProfile(profile);
-        showToast(profile ? "Google로 로그인했어요" : "로그인했지만 관리자 권한이 없습니다");
+        showToast("Google로 로그인했어요");
         return;
       } catch (error) {
         console.error("Google login failed", error);
@@ -243,7 +275,7 @@ export function SongbookApp() {
     }
 
     setAdminProfile(profile);
-    showToast(profile ? "Google 기본 관리자로 로그인했어요" : "로그인했지만 관리자 권한이 없습니다");
+    showToast("로그인했어요");
   }
 
   function openRequestModal() {
@@ -267,7 +299,7 @@ export function SongbookApp() {
     setQuery("");
     setActiveTag("전체");
     setLikedOnly(false);
-    setSort("recent");
+    setSort("likes");
     scrollToSongbook();
   }
 
@@ -280,14 +312,58 @@ export function SongbookApp() {
     }, 20);
   }
 
-  function toggleLike(songId: string, event?: MouseEvent) {
+  function adjustLikeCount(songId: string, delta: number) {
+    setSongs((prev) =>
+      prev.map((song) => (song.id === songId ? { ...song, likeCount: Math.max(0, song.likeCount + delta) } : song)),
+    );
+  }
+
+  async function toggleLike(songId: string, event?: MouseEvent) {
     event?.stopPropagation();
+
+    const willLike = !likedIds.has(songId);
+
+    if (firebaseMode) {
+      const uid = adminSession?.firebaseUid;
+      if (!uid) {
+        showToast("좋아요는 로그인 후 이용할 수 있어요");
+        return;
+      }
+
+      // 낙관적 업데이트
+      setLikedIds((prev) => {
+        const next = new Set(prev);
+        if (willLike) next.add(songId);
+        else next.delete(songId);
+        return next;
+      });
+      adjustLikeCount(songId, willLike ? 1 : -1);
+
+      try {
+        await setSongLike(uid, songId, willLike);
+      } catch (error) {
+        console.error("Failed to update like", error);
+        // 실패 시 롤백
+        setLikedIds((prev) => {
+          const next = new Set(prev);
+          if (willLike) next.delete(songId);
+          else next.add(songId);
+          return next;
+        });
+        adjustLikeCount(songId, willLike ? -1 : 1);
+        showToast("좋아요를 저장하지 못했어요. 잠시 후 다시 시도해주세요");
+      }
+      return;
+    }
+
+    // 로컬 모드: 기기 단위 좋아요 (누적 카운트도 로컬에서 반영)
     setLikedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(songId)) next.delete(songId);
-      else next.add(songId);
+      if (willLike) next.add(songId);
+      else next.delete(songId);
       return next;
     });
+    adjustLikeCount(songId, willLike ? 1 : -1);
   }
 
   async function copyCommand(song: Song, event?: MouseEvent) {
@@ -297,11 +373,12 @@ export function SongbookApp() {
       return;
     }
 
+    const command = buildRequestCommand(song);
     try {
-      await navigator.clipboard.writeText(song.requestCommand);
+      await navigator.clipboard.writeText(command);
       showToast("신청 문구를 복사했어요");
     } catch {
-      showToast(song.requestCommand);
+      showToast(command);
     }
   }
 
@@ -411,7 +488,7 @@ export function SongbookApp() {
       thumbnailUrl: videoId ? youtubeThumbnailUrl(videoId) : "",
       thumbnailSource: selectedThumb ? "manual" : videoId ? "youtube" : "pending",
       thumbnailConfidence: selectedThumb?.confidence ?? (videoId ? 78 : 0),
-      requestCommand: `!신청 ${id} ${artist} - ${title}`,
+      requestCommand: buildRequestCommand({ artist, title }),
       likeCount: 0,
       isFeatured: false,
       isHidden: false,
@@ -450,6 +527,8 @@ export function SongbookApp() {
         <NavBar
           siteTitle={siteSettings.siteTitle}
           adminProfile={adminProfile}
+          userName={adminSession?.displayName ?? null}
+          isLoggedIn={Boolean(adminSession)}
           onReset={resetAll}
           onGoogleLogin={handleGoogleLogin}
           onLogout={handleGoogleLogout}
@@ -643,12 +722,16 @@ export function SongbookApp() {
 function NavBar({
   siteTitle,
   adminProfile,
+  userName,
+  isLoggedIn,
   onReset,
   onGoogleLogin,
   onLogout,
 }: {
   siteTitle: string;
   adminProfile: AdminProfile | null;
+  userName: string | null;
+  isLoggedIn: boolean;
   onReset: () => void;
   onGoogleLogin: () => void;
   onLogout: () => void;
@@ -661,15 +744,22 @@ function NavBar({
         </span>
         <span className="text-[17px] font-extrabold text-ink">{siteTitle}</span>
       </button>
-      {adminProfile ? (
+      {isLoggedIn ? (
         <div className="ml-auto flex items-center gap-2">
-          <Link
-            href="/admin"
-            className="focus-ring inline-flex h-10 items-center gap-2 rounded-full bg-deep-lavender px-4 text-sm font-extrabold text-white shadow-card"
-          >
-            <Settings className="h-4 w-4" />
-            설정
-          </Link>
+          {userName ? (
+            <span className="hidden max-w-[160px] truncate rounded-full bg-white px-4 py-2 text-sm font-bold text-[#4a3f6b] shadow-card sm:inline-block">
+              {userName}
+            </span>
+          ) : null}
+          {adminProfile ? (
+            <Link
+              href="/admin"
+              className="focus-ring inline-flex h-10 items-center gap-2 rounded-full bg-deep-lavender px-4 text-sm font-extrabold text-white shadow-card"
+            >
+              <Settings className="h-4 w-4" />
+              설정
+            </Link>
+          ) : null}
           <button
             type="button"
             onClick={onLogout}
@@ -884,7 +974,7 @@ function SongCard({
             {statusLabel[song.status]}
           </span>
         </div>
-        <TagList tags={song.tags} />
+        <TagList tags={song.tags} likeCount={song.likeCount} />
         <div className="mt-4 flex items-center justify-between gap-3">
           <Difficulty value={song.difficulty} />
           <button
@@ -934,7 +1024,7 @@ function SongRow({
         </div>
         <p className="mt-1 text-sm font-semibold text-muted">{song.artist}</p>
         <div className="mt-2 hidden md:block">
-          <TagList tags={song.tags} compact />
+          <TagList tags={song.tags} compact likeCount={song.likeCount} />
         </div>
       </div>
       <Difficulty value={song.difficulty} />
@@ -993,12 +1083,12 @@ function Thumbnail({ song, className }: { song: Song; className: string }) {
   );
 }
 
-function TagList({ tags, compact = false }: { tags: string[]; compact?: boolean }) {
+function TagList({ tags, compact = false, likeCount }: { tags: string[]; compact?: boolean; likeCount?: number }) {
   const visible = tags.slice(0, compact ? 4 : 3);
   const hidden = tags.length - visible.length;
 
   return (
-    <div className={`flex flex-wrap gap-1.5 ${compact ? "" : "mt-3"}`}>
+    <div className={`flex flex-wrap items-center gap-1.5 ${compact ? "" : "mt-3"}`}>
       {visible.map((tag) => (
         <span key={tag} className={`rounded-lg border px-2.5 py-1 font-bold ${tagClass(tag)}`}>
           {tag}
@@ -1007,6 +1097,12 @@ function TagList({ tags, compact = false }: { tags: string[]; compact?: boolean 
       {hidden > 0 ? (
         <span className="rounded-lg border border-[#E4DBCB] bg-[#F1ECE3] px-2.5 py-1 text-[11px] font-bold text-muted">
           +{hidden}
+        </span>
+      ) : null}
+      {typeof likeCount === "number" ? (
+        <span className="inline-flex items-center gap-1 rounded-lg border border-[#F3D6E2] bg-[#FDEFF4] px-2.5 py-1 text-[11px] font-bold text-lotionpink">
+          <Heart className="h-3 w-3" fill="currentColor" />
+          좋아요 {likeCount}개
         </span>
       ) : null}
     </div>
@@ -1083,14 +1179,14 @@ function DetailModal({
               <X className="h-5 w-5" />
             </button>
           </div>
-          <TagList tags={song.tags} />
+          <TagList tags={song.tags} likeCount={song.likeCount} />
           {song.memo && (
             <div className="mt-5 rounded-2xl bg-[#F8F2E8] p-4 text-sm font-medium leading-6 text-muted">
               {song.memo}
             </div>
           )}
           <div className="mt-4 rounded-2xl border border-[#EFE6D6] bg-white p-4 text-sm font-bold text-[#4a3f6b]">
-            {song.requestCommand}
+            {buildRequestCommand(song)}
           </div>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <button

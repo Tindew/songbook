@@ -46,6 +46,7 @@ import {
   updateSongInFirestore,
   updateSongRequestInFirestore,
 } from "@/lib/firebase/firestore";
+import { buildRequestCommand } from "@/lib/songs/command";
 import { loadRequests, loadSongs, saveRequests, saveSongs } from "@/lib/songs/storage";
 import { extractYoutubeVideoId, youtubeThumbnailCandidates, youtubeThumbnailUrl } from "@/lib/songs/youtube";
 import type { AdminProfile, SiteSettings, Song, SongRequest, SongStatus, YoutubeCandidate } from "@/types/song";
@@ -1230,7 +1231,7 @@ function buildSongFromForm(form: SongForm, existing?: Song): Song {
     thumbnailUrl,
     thumbnailSource: thumbnailUrl ? "manual" : videoId ? "youtube" : "default",
     thumbnailConfidence: thumbnailUrl ? 100 : videoId ? 82 : 0,
-    requestCommand: `!신청 ${id} ${form.artist.trim()} - ${form.title.trim()}`,
+    requestCommand: buildRequestCommand({ artist: form.artist.trim(), title: form.title.trim() }),
     likeCount: Number(form.likeCount) || 0,
     isFeatured: form.isFeatured,
     isHidden: form.isHidden,
@@ -1259,7 +1260,7 @@ function buildSongFromRequest(request: SongRequest, id: string): Song {
     thumbnailUrl,
     thumbnailSource: request.selectedThumbnailConfidence ? "manual" : videoId ? "youtube" : "pending",
     thumbnailConfidence: request.selectedThumbnailConfidence ?? (videoId ? 78 : 0),
-    requestCommand: `!신청 ${id} ${request.artist} - ${request.title}`,
+    requestCommand: buildRequestCommand({ artist: request.artist, title: request.title }),
     likeCount: 0,
     isFeatured: false,
     isHidden: false,

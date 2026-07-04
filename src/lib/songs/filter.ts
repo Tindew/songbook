@@ -42,15 +42,16 @@ export function filterAndSortSongs(input: FilterInput) {
       .map(({ song }) => song);
   }
 
+  const byRecent = (a: Song, b: Song) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+
   return filtered.slice().sort((a, b) => {
     if (input.sort === "title") return a.title.localeCompare(b.title, "ko");
     if (input.sort === "artist") return a.artist.localeCompare(b.artist, "ko");
     if (input.sort === "likes") {
-      const aLike = a.likeCount + (input.likedIds.has(a.id) ? 1 : 0);
-      const bLike = b.likeCount + (input.likedIds.has(b.id) ? 1 : 0);
-      return bLike - aLike;
+      // 누적 좋아요가 많은 순. 동점(좋아요 0 포함)이면 최신 등록순.
+      return (b.likeCount - a.likeCount) || byRecent(a, b);
     }
     if (input.sort === "difficulty") return b.difficulty - a.difficulty;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    return byRecent(a, b);
   });
 }
