@@ -249,10 +249,15 @@ export function SongbookApp() {
         setAdminSession(session);
         saveGoogleAdminSession(session);
 
-        const profile =
-          (await fetchAdminProfileByIdentity({ uid: session.firebaseUid, googleId: session.googleId, email: session.email })) ??
-          localAdminProfile(session.googleId);
-        setAdminProfile(profile);
+        // 관리자 여부 확인은 로그인 성공과 분리한다.
+        // 일반 유저는 admins 컬렉션 조회 권한이 없어 실패할 수 있는데, 이는 로그인 실패가 아니다.
+        let profile: AdminProfile | null = null;
+        try {
+          profile = await fetchAdminProfileByIdentity({ uid: session.firebaseUid, googleId: session.googleId, email: session.email });
+        } catch (adminError) {
+          console.debug("Admin lookup skipped for non-admin user", adminError);
+        }
+        setAdminProfile(profile ?? localAdminProfile(session.googleId));
         showToast("Google로 로그인했어요");
         return;
       } catch (error) {

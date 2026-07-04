@@ -192,10 +192,16 @@ export async function fetchAdminProfileByIdentity(identity: { uid?: string | nul
 
   if (!filters.length) return null;
 
-  const snapshot = await getDocs(query(collection(db, "admins"), or(...filters), limit(1)));
-  if (!snapshot.docs.length) return null;
-  const matched = snapshot.docs[0];
-  return { uid: matched.id, ...matched.data() } as AdminProfile;
+  try {
+    const snapshot = await getDocs(query(collection(db, "admins"), or(...filters), limit(1)));
+    if (!snapshot.docs.length) return null;
+    const matched = snapshot.docs[0];
+    return { uid: matched.id, ...matched.data() } as AdminProfile;
+  } catch (error) {
+    // 일반 유저는 admins 컬렉션 질의 권한이 없다(permission-denied). 관리자가 아님으로 처리.
+    if ((error as { code?: string }).code === "permission-denied") return null;
+    throw error;
+  }
 }
 
 export async function saveAdminProfile(profile: AdminProfile) {
